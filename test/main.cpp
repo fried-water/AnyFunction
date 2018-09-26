@@ -2,10 +2,11 @@
 
 #include "graph.h"
 #include "executor.h"
+#include "tasks.h"
 
 #include <iostream>
 
-using namespace comp;
+using namespace anyf;
 
 struct MyStruct {
   int64_t data = 0;
@@ -49,9 +50,9 @@ int main() {
   };
 
   std::cout << "-----Component\n";
-  auto bb = invoke<MyStruct>(make_any_function(func), MyStruct(5));
+  auto bb = make_any_function(func).invoke<MyStruct>(MyStruct(5));
   std::cout << "-----Component 2\n";
-  const auto& aa = invoke<MyStruct>(make_any_function(const_ref_func), MyStruct(5));
+  const auto& aa = make_any_function(const_ref_func).invoke<MyStruct>(MyStruct(5));
   std::cout << "-----Raw\n";
   auto cc = func(MyStruct(5));
   std::cout << "Hello World " << aa.data << " " << bb.data << " " << cc.data << "\n";
@@ -62,5 +63,15 @@ int main() {
   auto mid1 = g.add(func, in1);
   auto final_graph = g.output(mid1);
 
-  return 0;
+  TaskSystem task_system;
+
+  execute_graph<MyStruct>(final_graph, task_system, MyStruct(7));
+
+  int sum = 0;
+  for(int i = 0; i < 100000; i++) {
+    auto temp = MyStruct(3);
+    sum += temp.data;
+  }
+
+  return sum;
 }

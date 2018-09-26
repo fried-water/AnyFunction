@@ -5,7 +5,7 @@
 #include <tuple>
 #include <type_traits>
 
-namespace comp {
+namespace anyf {
 namespace traits {
 
 template <typename>

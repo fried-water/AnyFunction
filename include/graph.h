@@ -9,8 +9,7 @@
 
 #include <boost/container/small_vector.hpp>
 
-
-namespace comp {
+namespace anyf {
 
 struct Source {
   Type type;
@@ -25,18 +24,29 @@ struct Sink {
 };
 
 struct InternalNode {
-  AnyFunction func;
+  any_function func;
   small_vec<int, 3> inputs;
   
-  InternalNode(AnyFunction func, small_vec<int, 3> inputs) :
+  InternalNode(any_function func, small_vec<int, 3> inputs) :
     func(std::move(func)),
     inputs(std::move(inputs)) {}
 };
 
-
-
-class DependencyGraph {
+class function_graph {
+ public:
   using NodeVariant = std::variant<Source, InternalNode, Sink>;
+
+  friend class ConstructingGraph;
+
+  const std::vector<NodeVariant>& nodes() const { return _nodes; }
+  const small_vec_base<std::pair<int, int>>& outputs(int i) const { return _outputs[i]; }
+
+ private:
+
+  function_graph(std::vector<NodeVariant> nodes, std::vector<small_vec<std::pair<int, int>, 3>> outputs) 
+    : _nodes(nodes)
+    , _outputs(outputs) {}
+
   std::vector<NodeVariant> _nodes;
   // node -> id, idx
   std::vector<small_vec<std::pair<int, int>, 3>> _outputs;
@@ -77,7 +87,7 @@ class ConstructingGraph {
   template <typename F, typename... Nids>
   NodeID add(F f, Nids... ids) {
     static_assert((std::is_same_v<Nids, NodeID> && ...));
-    auto node = InternalNode(make_any_function(f), util::create_small_vector<int, 3>(ids.idx...));
+    auto node = InternalNode(make_any_function(f), util::make_vector<small_vec<int, 3>>(ids.idx...));
 
     for(int i = 0; i < static_cast<int>(node.inputs.size()); i++) {
       Type output_type = get_type(node.inputs[i]);
@@ -96,9 +106,9 @@ class ConstructingGraph {
     return _nodes.size() - 1;
   }
 
-  DependencyGraph output(NodeID id) {
+  function_graph output(NodeID id) {
     _nodes.emplace_back(Sink(id.idx));
-    return DependencyGraph();
+    return function_graph(std::move(_nodes), std::move(_outputs));
   }
 };
 

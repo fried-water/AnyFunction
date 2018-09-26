@@ -9,7 +9,7 @@
 #include <typeindex>
 #include <type_traits>
 
-namespace comp {
+namespace anyf {
 
 class Type {
     bool _is_const;
@@ -48,7 +48,7 @@ inline Type make_type() {
 
 template <typename TupleTypes, std::size_t... Is>
 inline small_vec<Type, 3> make_types_impl(std::index_sequence<Is...>) {
-  return util::create_small_vector<Type, 3>(make_type<std::tuple_element_t<Is, TupleTypes>>()...);
+  return util::make_vector<small_vec<Type, 3>>(make_type<std::tuple_element_t<Is, TupleTypes>>()...);
 }
 
 template <typename TupleTypes>
