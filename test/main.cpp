@@ -1,8 +1,9 @@
 #include "any_function.h"
 
 #include "graph.h"
-#include "executor.h"
-#include "tasks.h"
+#include "test.h"
+//#include "executor.h"
+//#include "tasks.h"
 
 #include <iostream>
 
@@ -44,34 +45,36 @@ MyStruct const_ref_func(const MyStruct& a) {
 }
 
 int main() {
-  auto func = [](MyStruct b) {
-    std::cout << b.data << std::endl;
-    return MyStruct(b.data* 3);
-  };
+  any_function_test();
 
-  std::cout << "-----Component\n";
-  auto bb = make_any_function(func).invoke<MyStruct>(MyStruct(5));
-  std::cout << "-----Component 2\n";
-  const auto& aa = make_any_function(const_ref_func).invoke<MyStruct>(MyStruct(5));
-  std::cout << "-----Raw\n";
-  auto cc = func(MyStruct(5));
-  std::cout << "Hello World " << aa.data << " " << bb.data << " " << cc.data << "\n";
+//   auto func = [](MyStruct b) {
+//     std::cout << b.data << std::endl;
+//     return MyStruct(b.data* 3);
+//   };
 
-  ConstructingGraph g;
+//   std::cout << "-----Component\n";
+//   auto bb = make_any_function(func).invoke<MyStruct>(MyStruct(5));
+//   std::cout << "-----Component 2\n";
+//   const auto& aa = make_any_function(const_ref_func).invoke<MyStruct>(MyStruct(5));
+//   std::cout << "-----Raw\n";
+//   auto cc = func(MyStruct(5));
+//   std::cout << "Hello World " << aa.data << " " << bb.data << " " << cc.data << "\n";
 
-  auto in1 = g.input<MyStruct>();
-  auto mid1 = g.add(func, in1);
-  auto final_graph = g.output(mid1);
+//   ConstructingGraph g;
 
-  TaskSystem task_system;
+//   auto in1 = g.input<MyStruct>();
+//   auto mid1 = g.add(func, in1);
+//   auto final_graph = g.output(mid1);
 
-  execute_graph<MyStruct>(final_graph, task_system, MyStruct(7));
+//   // TaskSystem task_system;
 
-  int sum = 0;
-  for(int i = 0; i < 100000; i++) {
-    auto temp = MyStruct(3);
-    sum += temp.data;
-  }
+//   // execute_graph<MyStruct>(final_graph, task_system, MyStruct(7));
 
-  return sum;
+//   int sum = 0;
+//   for(int i = 0; i < 100000; i++) {
+//     auto temp = MyStruct(3);
+//     sum += temp.data;
+//   }
+
+  // return sum;
 }

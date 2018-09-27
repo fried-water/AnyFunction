@@ -37,6 +37,18 @@ template <typename... Ts>
 struct is_tuple<std::tuple<Ts...>> : std::true_type {};
 
 
+template <typename T, typename Enable = void>
+struct is_decayed_impl : std::false_type {};
+
+template <typename T>
+struct is_decayed_impl<T, std::enable_if_t<std::is_same_v<T, std::decay_t<T>>>> : std::true_type {};
+
+template <typename T>
+struct is_decayed : is_decayed_impl<T> {};
+
+template <typename T>
+constexpr bool is_decayed_v = is_decayed<T>::value;
+
 template <template <typename> typename, typename>
 struct tuple_all_of;
 

@@ -1,0 +1,83 @@
+#ifndef ANY_FUNCTION_H
+#define ANY_FUNCTION_H
+
+#include "util.h"
+#include "type.h"
+#include "traits.h"
+
+#include <boost/container/small_vector.hpp>
+
+#include <any>
+#include <functional>
+
+namespace anyf {
+
+class any_function {
+  constexpr static int SMALL_VEC_SIZE = 3;
+ public:
+  using vec_type = small_vec<std::any, SMALL_VEC_SIZE>;
+
+  template <typename Output, typename... Input>
+  Output invoke(Input&... input) const {
+    if constexpr(std::is_reference_v<Output>) {
+      return *std::any_cast<std::add_pointer_t<std::remove_reference_t<Output>>>(_func(util::make_vector<vec_type>(std::make_any<std::add_pointer_t<std::decay_t<Input>>>(&input)...)));
+    } else {
+      return std::any_cast<Output>(_func(util::make_vector<vec_type>(std::make_any<std::add_pointer_t<std::decay_t<Input>>>(&input)...)));
+    }
+  }
+
+  const small_vec_base<Type>& input_types() const { return _input_types; }
+  Type output_type() const { return _output_type; }
+
+ private:
+  std::function<std::any(const vec_type&)> _func;
+
+  small_vec<Type, SMALL_VEC_SIZE> _input_types;
+  Type _output_type;
+
+  explicit any_function(std::function<std::any(const vec_type&)> func, small_vec<Type, SMALL_VEC_SIZE> input_types, Type output_type) :
+      _func(std::move(func)),
+      _input_types(std::move(input_types)),
+      _output_type(output_type) { }
+l
+  template <typename F>
+  friend any_function make_any_function(F f);
+};
+
+template <typename F>
+inline any_function make_any_function(F f);
+
+namespace details {
+template <typename Return, typename Types, typename Vec, typename F, std::size_t... Is>
+inline Return call_with_any_vec(F f, const Vec& inputs, std::index_sequence<Is...>) {
+  return std::invoke(f, *std::any_cast<std::add_pointer_t<std::decay_t<std::tuple_element_t<Is, Types>>>>(inputs[Is])...);
+}
+}
+
+template <typename F>
+inline any_function make_any_function(F f) {
+  using f_traits = traits::function_traits<F>;
+  using ret_type = typename f_traits::return_type;
+  using args = typename f_traits::args;
+
+  if constexpr(std::is_reference_v<ret_type>) {
+    return any_function(
+      [f = std::move(f)](const small_vec<std::any, 3>& inputs) {
+        auto& result = details::call_with_any_vec<ret_type, args>(std::move(f), inputs, std::make_index_sequence<f_traits::arity>());
+        return std::make_any<std::add_pointer_t<std::remove_reference_t<ret_type>>>(&result);
+      },
+      make_types<args>(),
+      make_type<ret_type>());
+  } else {
+    return any_function(
+      [f = std::move(f)](const small_vec<std::any, 3>& inputs) {
+        return std::any(details::call_with_any_vec<ret_type, args>(std::move(f), inputs, std::make_index_sequence<f_traits::arity>()));
+      },
+      make_types<args>(),
+      make_type<ret_type>());
+  }
+}
+
+}
+
+#endif

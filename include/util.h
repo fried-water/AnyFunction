@@ -25,11 +25,6 @@ inline Vec make_vector(Elements&&... elements) {
   return vec;
 }
 
-template <typename Types, typename Vec, typename F, std::size_t... Is>
-inline auto call_with_any_vec(F f, Vec inputs, std::index_sequence<Is...>) {
-  return std::invoke(f, std::any_cast<std::tuple_element_t<Is, Types>>(std::move(inputs[Is]))...);
-}
-
 }
 }
 

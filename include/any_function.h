@@ -7,10 +7,7 @@
 
 #include <boost/container/small_vector.hpp>
 
-#include <cassert>
-
 #include <any>
-#include <iostream>
 #include <functional>
 
 namespace anyf {
@@ -22,23 +19,24 @@ class any_function {
 
   template <typename Output, typename... Input>
   Output invoke(Input&&... input) const {
-    return std::any_cast<Output>(_func(util::make_vector<vec_type>(std::any(std::forward<Input>(input))...)));
+    auto vec = util::make_vector<vec_type>(std::forward<Input>(input)...);
+    return std::any_cast<Output>(_func(vec));
   }
 
-  std::any invoke_any(vec_type input) const {
-    return _func(std::move(input));
+  std::any invoke(small_vec<std::any, 3>& inputs) const {
+    return _func(inputs);
   }
 
   const small_vec_base<Type>& input_types() const { return _input_types; }
   Type output_type() const { return _output_type; }
 
  private:
-  std::function<std::any(vec_type)> _func;
+  std::function<std::any(vec_type&)> _func;
 
   small_vec<Type, SMALL_VEC_SIZE> _input_types;
   Type _output_type;
 
-  explicit any_function(std::function<std::any(vec_type)> func, small_vec<Type, SMALL_VEC_SIZE> input_types, Type output_type) :
+  explicit any_function(std::function<std::any(vec_type&)> func, small_vec<Type, SMALL_VEC_SIZE> input_types, Type output_type) :
       _func(std::move(func)),
       _input_types(std::move(input_types)),
       _output_type(output_type) { }
@@ -48,24 +46,34 @@ class any_function {
 };
 
 template <typename F>
+inline any_function make_any_function(F f);
+
+namespace details {
+template <typename Types, typename Vec, typename F, std::size_t... Is>
+inline auto call_with_any_vec(F f, Vec& inputs, std::index_sequence<Is...>) {
+  return std::invoke(f, std::any_cast<std::tuple_element_t<Is, Types>>(std::move(inputs[Is]))...);
+}
+}
+
+template <typename F>
 inline any_function make_any_function(F f) {
-  using f_traits = traits::function_traits<F>;
-  using ret_type = typename f_traits::return_type;
-  using args = typename f_traits::args;
+  using namespace traits;
+  using ret_type = typename function_traits<F>::return_type;
+  using args = typename function_traits<F>::args;
 
-  constexpr bool legal_return_type = std::is_same_v<std::decay_t<ret_type>, ret_type>;
-  constexpr bool has_pointer = std::is_pointer_v<ret_type> || traits::tuple_any_of_v<std::is_pointer, args>;
+  constexpr bool everything_decayed = tuple_all_of_v<is_decayed, args> && is_decayed_v<ret_type>;
 
-  static_assert(legal_return_type && !has_pointer, "Arguments and return type cannot be pointers, and return type must decay to itself");
+  static_assert(everything_decayed, "Arguments and return types must be decayed.");
 
-  if constexpr(legal_return_type && !has_pointer) {
+  if constexpr(everything_decayed) {
     return any_function(
-      [f = std::move(f)](small_vec<std::any, 3> inputs) {
-        assert(inputs.size() == f_traits::arity);
-        return std::any(util::call_with_any_vec<args>(std::move(f), std::move(inputs), std::make_index_sequence<f_traits::arity>()));
+      [f = std::move(f)](small_vec<std::any, 3>& inputs) {
+        return std::any(details::call_with_any_vec<args>(std::move(f), inputs, std::make_index_sequence<function_traits<F>::arity>()));
       },
       make_types<args>(),
       make_type<ret_type>());
+  } else {
+    throw 0;
   }
 }
 

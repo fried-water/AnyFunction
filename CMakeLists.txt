@@ -3,7 +3,7 @@ project (ANY_FUNCTION)
 
 set(CMAKE_CXX_FLAGS "-O3 -Wall -Wextra")
 
-add_executable (main test/main.cpp)
+add_executable (main test/main.cpp test/any_function_test.cpp)
 
 target_include_directories (main PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 
