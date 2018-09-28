@@ -19,25 +19,31 @@ class any_function {
 
   template <typename Output, typename... Input>
   Output invoke(Input&&... input) const {
-    auto vec = util::make_vector<vec_type>(std::forward<Input>(input)...);
-    return std::any_cast<Output>(_func(vec));
+    if constexpr(std::is_reference_v<Output>) {
+      return *std::any_cast<std::add_pointer_t<std::remove_reference_t<Output>>>(_func_with_pointers(util::make_vector<vec_type>(std::make_any<std::add_pointer_t<std::decay_t<Input>>>(&input)...)));
+    } else {
+      return std::any_cast<Output>(_func_with_pointers(util::make_vector<vec_type>(std::make_any<std::add_pointer_t<std::decay_t<Input>>>(&input)...)));
+    }
   }
 
-  std::any invoke(small_vec<std::any, 3>& inputs) const {
-    return _func(inputs);
+  std::any invoke_with_any(small_vec<std::any, 3>& inputs) const {
+    return _func_with_values(inputs);
   }
 
   const small_vec_base<Type>& input_types() const { return _input_types; }
   Type output_type() const { return _output_type; }
 
  private:
-  std::function<std::any(vec_type&)> _func;
+  std::function<std::any(const vec_type&)> _func_with_pointers;
+  std::function<std::any(vec_type&)> _func_with_values;
 
   small_vec<Type, SMALL_VEC_SIZE> _input_types;
   Type _output_type;
 
-  explicit any_function(std::function<std::any(vec_type&)> func, small_vec<Type, SMALL_VEC_SIZE> input_types, Type output_type) :
-      _func(std::move(func)),
+  explicit any_function(std::function<std::any(const vec_type&)> func_with_pointers,  std::function<std::any(vec_type&)> func_with_values,
+          small_vec<Type, SMALL_VEC_SIZE> input_types, Type output_type) :
+      _func_with_pointers(std::move(func_with_pointers)),
+      _func_with_values(std::move(func_with_values)),
       _input_types(std::move(input_types)),
       _output_type(output_type) { }
 
@@ -49,31 +55,53 @@ template <typename F>
 inline any_function make_any_function(F f);
 
 namespace details {
-template <typename Types, typename Vec, typename F, std::size_t... Is>
-inline auto call_with_any_vec(F f, Vec& inputs, std::index_sequence<Is...>) {
+template <typename Return, typename Types, typename Vec, typename F, std::size_t... Is>
+inline Return call_with_any_pointers_vec(F f, const Vec& inputs, std::index_sequence<Is...>) {
+  return std::invoke(f, *std::any_cast<std::add_pointer_t<std::decay_t<std::tuple_element_t<Is, Types>>>>(inputs[Is])...);
+}
+
+template <typename Return, typename Types, typename Vec, typename F, std::size_t... Is>
+inline Return call_with_any_values_vec(F f, Vec& inputs, std::index_sequence<Is...>) {
   return std::invoke(f, std::any_cast<std::tuple_element_t<Is, Types>>(std::move(inputs[Is]))...);
 }
 }
 
 template <typename F>
 inline any_function make_any_function(F f) {
-  using namespace traits;
-  using ret_type = typename function_traits<F>::return_type;
-  using args = typename function_traits<F>::args;
+  using f_traits = traits::function_traits<F>;
+  using ret_type = typename f_traits::return_type;
+  using args = typename f_traits::args;
 
-  constexpr bool everything_decayed = tuple_all_of_v<is_decayed, args> && is_decayed_v<ret_type>;
+  if constexpr(std::is_reference_v<ret_type>) {
+    auto&& ptr_func = [f](const small_vec<std::any, 3>& inputs) {
+      auto& result = details::call_with_any_pointers_vec<ret_type, args>(std::move(f), inputs, std::make_index_sequence<f_traits::arity>());
+      return std::make_any<std::add_pointer_t<std::remove_reference_t<ret_type>>>(&result);
+    };
 
-  static_assert(everything_decayed, "Arguments and return types must be decayed.");
+    auto&& val_func = [f = std::move(f)](small_vec<std::any, 3>& inputs) {
+      auto& result = details::call_with_any_values_vec<ret_type, args>(std::move(f), inputs, std::make_index_sequence<f_traits::arity>());
+      return std::make_any<std::add_pointer_t<std::remove_reference_t<ret_type>>>(&result);
+    };
 
-  if constexpr(everything_decayed) {
     return any_function(
-      [f = std::move(f)](small_vec<std::any, 3>& inputs) {
-        return std::any(details::call_with_any_vec<args>(std::move(f), inputs, std::make_index_sequence<function_traits<F>::arity>()));
-      },
+      ptr_func,
+      val_func,
       make_types<args>(),
       make_type<ret_type>());
   } else {
-    throw 0;
+    auto&& ptr_func = [f](const small_vec<std::any, 3>& inputs) {
+      return std::any(details::call_with_any_pointers_vec<ret_type, args>(std::move(f), inputs, std::make_index_sequence<f_traits::arity>()));
+    };
+
+    auto&& val_func = [f = std::move(f)](small_vec<std::any, 3>& inputs) {
+      return std::any(details::call_with_any_values_vec<ret_type, args>(std::move(f), inputs, std::make_index_sequence<f_traits::arity>()));
+    };
+
+    return any_function(
+      ptr_func,
+      val_func,
+      make_types<args>(),
+      make_type<ret_type>());
   }
 }
 
