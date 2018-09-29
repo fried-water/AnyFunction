@@ -15,9 +15,8 @@ target_link_libraries (main pthread)
 file(GLOB_RECURSE ALL_SOURCE_FILES test/*.cpp test/*.h include/*.h)
 
 add_custom_target(format
-    COMMENT "Running clang-format"
     COMMAND /usr/bin/clang-format
-    -style=LLVM
+    -style=file
     -i
     ${ALL_SOURCE_FILES}
 )

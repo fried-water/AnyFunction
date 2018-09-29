@@ -11,21 +11,21 @@ struct Sentinal {
 
   Sentinal(int data) : data(data) {}
 
-  Sentinal(const Sentinal &x)
+  Sentinal(const Sentinal& x)
       : data(x.data), copy_con(x.copy_con), move_con(x.move_con),
         copy_ass(x.copy_ass), move_ass(x.move_ass) {
     std::cout << "Copy: " << data << "\n";
     ++copy_con;
   }
 
-  Sentinal(Sentinal &&x)
+  Sentinal(Sentinal&& x)
       : data(x.data), copy_con(x.copy_con), move_con(x.move_con),
         copy_ass(x.copy_ass), move_ass(x.move_ass) {
     std::cout << "Move: " << data << "\n";
     ++move_con;
   }
 
-  Sentinal &operator=(const Sentinal &x) {
+  Sentinal& operator=(const Sentinal& x) {
     std::cout << "Copy Ass: " << data << "\n";
     data = x.data;
     copy_con = x.copy_con;
@@ -35,7 +35,7 @@ struct Sentinal {
     return *this;
   }
 
-  Sentinal &operator=(Sentinal &&x) {
+  Sentinal& operator=(Sentinal&& x) {
     std::cout << "Move Ass: " << data << "\n";
     data = x.data;
     copy_con = x.copy_con;

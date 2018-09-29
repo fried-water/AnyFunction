@@ -28,9 +28,9 @@ public:
 
   std::optional<std::tuple<std::function<void()>, int>> pop() {
     std::unique_lock<std::mutex> lock{_mutex};
-    while (_q.empty() && !_done)
+    while(_q.empty() && !_done)
       _cv.wait(lock);
-    if (_q.empty())
+    if(_q.empty())
       return std::nullopt;
     auto x = std::move(_q.front());
     _q.pop_front();
@@ -39,14 +39,15 @@ public:
 
   std::optional<std::tuple<std::function<void()>, int>> try_pop() {
     std::unique_lock<std::mutex> lock{_mutex, std::try_to_lock};
-    if (!lock || _q.empty())
+    if(!lock || _q.empty())
       return std::nullopt;
     auto x = std::move(_q.front());
     _q.pop_front();
     return x;
   }
 
-  template <typename F> void push(int task_group, F &&f) {
+  template <typename F>
+  void push(int task_group, F&& f) {
     {
       std::unique_lock<std::mutex> lock{_mutex};
       _q.emplace_back(std::forward<F>(f), task_group);
@@ -54,10 +55,11 @@ public:
     _cv.notify_one();
   }
 
-  template <typename F> bool try_push(int task_group, F &&f) {
+  template <typename F>
+  bool try_push(int task_group, F&& f) {
     {
       std::unique_lock<std::mutex> lock{_mutex, std::try_to_lock};
-      if (!lock)
+      if(!lock)
         return false;
       _q.emplace_back(std::forward<F>(f), task_group);
     }
@@ -77,11 +79,11 @@ class TaskSystem {
   std::unordered_map<int, std::atomic<unsigned>> _group_task_counts;
 
   void run(unsigned i) {
-    while (true) {
+    while(true) {
       unsigned spin_count = std::max<unsigned>(16, _count);
-      for (unsigned n = 0; n < spin_count; n++) {
+      for(unsigned n = 0; n < spin_count; n++) {
         auto tuple = _q[(i + n) % _count].try_pop();
-        if (tuple) {
+        if(tuple) {
           std::get<0> (*tuple)();
           _group_task_counts[std::get<1>(*tuple)].fetch_sub(
               1, std::memory_order_relaxed);
@@ -90,7 +92,7 @@ class TaskSystem {
       }
 
       auto tuple = _q[i].pop();
-      if (!tuple)
+      if(!tuple)
         break;
       std::get<0> (*tuple)();
       _group_task_counts[std::get<1>(*tuple)].fetch_sub(
@@ -100,24 +102,25 @@ class TaskSystem {
 
 public:
   TaskSystem() : _q(_count) {
-    for (unsigned i = 0; i < _count; i++) {
+    for(unsigned i = 0; i < _count; i++) {
       _threads.emplace_back([this, i]() { run(i); });
     }
   }
 
   ~TaskSystem() {
-    for (auto &q : _q)
+    for(auto& q : _q)
       q.done();
-    for (auto &thread : _threads)
+    for(auto& thread : _threads)
       thread.join();
   }
 
-  template <typename F> void async(int task_group, F &&f) {
+  template <typename F>
+  void async(int task_group, F&& f) {
     auto i = _index++;
     _group_task_counts[task_group].fetch_add(1, std::memory_order_relaxed);
 
-    for (unsigned n = 0; n < _count; n++) {
-      if (_q[(i + n) % _count].try_push(task_group, std::forward<F>(f)))
+    for(unsigned n = 0; n < _count; n++) {
+      if(_q[(i + n) % _count].try_push(task_group, std::forward<F>(f)))
         return;
     }
 
@@ -136,7 +139,7 @@ public:
   }
 
   void wait_for_task_group(int task_group) const {
-    while (!is_task_group_complete(task_group)) {
+    while(!is_task_group_complete(task_group)) {
     }
   }
 };

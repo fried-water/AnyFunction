@@ -29,16 +29,18 @@ struct InternalNode {
       : func(std::move(func)), inputs(std::move(inputs)) {}
 };
 
-template <typename... Inputs> class constructing_graph;
+template <typename... Inputs>
+class constructing_graph;
 
-template <typename Output, typename... Inputs> class function_graph {
+template <typename Output, typename... Inputs>
+class function_graph {
 public:
   using NodeVariant = std::variant<Source, InternalNode, Sink>;
 
   friend class constructing_graph<Inputs...>;
 
-  const std::vector<NodeVariant> &nodes() const { return _nodes; }
-  const small_vec_base<std::pair<int, int>> &outputs(int i) const {
+  const std::vector<NodeVariant>& nodes() const { return _nodes; }
+  const small_vec_base<std::pair<int, int>>& outputs(int i) const {
     return _outputs[i];
   }
 
@@ -52,7 +54,8 @@ private:
   std::vector<small_vec<std::pair<int, int>, 3>> _outputs;
 };
 
-template <typename... Inputs> class constructing_graph {
+template <typename... Inputs>
+class constructing_graph {
   using NodeVariant = std::variant<Source, InternalNode, Sink>;
   std::vector<NodeVariant> _nodes;
   std::vector<std::string> _names;
@@ -63,7 +66,7 @@ template <typename... Inputs> class constructing_graph {
             util::make_std_vector<NodeVariant>(Source(make_type<Inputs>())...)),
         _names(), _outputs(sizeof...(Inputs)) {
     _names.reserve(sizeof...(Inputs));
-    for (auto &&name : std::move(names)) {
+    for(auto&& name : std::move(names)) {
       assert(!name_exists(name));
       _names.push_back(name);
     }
@@ -73,11 +76,11 @@ template <typename... Inputs> class constructing_graph {
 
   Type get_type(int i) const {
     return std::visit(
-        [this](const auto &arg) {
+        [this](const auto& arg) {
           using T = std::decay_t<decltype(arg)>;
-          if constexpr (std::is_same_v<T, Source>) {
+          if constexpr(std::is_same_v<T, Source>) {
             return arg.type;
-          } else if constexpr (std::is_same_v<T, Sink>) {
+          } else if constexpr(std::is_same_v<T, Sink>) {
             return get_type(arg.node_idx);
           } else {
             return arg.func.output_type();
@@ -86,11 +89,11 @@ template <typename... Inputs> class constructing_graph {
         _nodes[i]);
   }
 
-  bool name_exists(const std::string_view &new_name) const {
+  bool name_exists(const std::string_view& new_name) const {
     return std::find(_names.begin(), _names.end(), new_name) != _names.end();
   }
 
-  int idx_of(const std::string_view &name) const {
+  int idx_of(const std::string_view& name) const {
     auto it = std::find(_names.begin(), _names.end(), name);
     assert(it != _names.end());
 
@@ -98,26 +101,27 @@ template <typename... Inputs> class constructing_graph {
   }
 
 public:
-  template <typename F> constructing_graph &add(F f, std::string name) {
+  template <typename F>
+  constructing_graph& add(F f, std::string name) {
     return add(std::move(f), std::move(name), {});
   }
 
   template <typename F>
-  constructing_graph &add(F f, std::string name,
+  constructing_graph& add(F f, std::string name,
                           small_vec<std::string, 3> inputs) {
     assert(!name_exists(name));
 
     auto node = InternalNode(make_any_function(f),
                              util::map<small_vec<int, 3>>(
-                                 inputs, [this](const std::string_view &name) {
+                                 inputs, [this](const std::string_view& name) {
                                    return idx_of(name);
                                  }));
 
-    for (int i = 0; i < static_cast<int>(node.inputs.size()); i++) {
+    for(int i = 0; i < static_cast<int>(node.inputs.size()); i++) {
       Type output_type = get_type(node.inputs[i]);
       Type input_type = node.func.input_types()[i];
 
-      if (output_type != input_type) {
+      if(output_type != input_type) {
         std::cout << "Output : " << output_type << " does not match "
                   << input_type << std::endl;
         throw 0;
@@ -133,7 +137,7 @@ public:
   }
 
   template <typename Output>
-  function_graph<Output, Inputs...> output(const std::string_view &name) {
+  function_graph<Output, Inputs...> output(const std::string_view& name) {
     int idx = idx_of(name);
     _outputs[idx].emplace_back(_nodes.size(), 0);
     _nodes.emplace_back(Sink(idx));

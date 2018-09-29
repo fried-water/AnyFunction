@@ -8,7 +8,8 @@
 namespace anyf {
 namespace traits {
 
-template <typename> struct function_traits;
+template <typename>
+struct function_traits;
 
 template <typename Function>
 struct function_traits
@@ -37,11 +38,14 @@ template <typename T>
 struct is_decayed_impl<T, std::enable_if_t<std::is_same_v<T, std::decay_t<T>>>>
     : std::true_type {};
 
-template <typename T> struct is_decayed : is_decayed_impl<T> {};
+template <typename T>
+struct is_decayed : is_decayed_impl<T> {};
 
-template <typename T> constexpr bool is_decayed_v = is_decayed<T>::value;
+template <typename T>
+constexpr bool is_decayed_v = is_decayed<T>::value;
 
-template <template <typename> typename, typename> struct tuple_all_of;
+template <template <typename> typename, typename>
+struct tuple_all_of;
 
 template <template <typename> typename Pred, typename... Ts>
 struct tuple_all_of<Pred, std::tuple<Ts...>> {
@@ -51,7 +55,8 @@ struct tuple_all_of<Pred, std::tuple<Ts...>> {
 template <template <typename> typename Pred, typename Tuple>
 constexpr bool tuple_all_of_v = tuple_all_of<Pred, Tuple>::value;
 
-template <template <typename> typename, typename> struct tuple_any_of;
+template <template <typename> typename, typename>
+struct tuple_any_of;
 
 template <template <typename> typename Pred, typename... Ts>
 struct tuple_any_of<Pred, std::tuple<Ts...>> {
