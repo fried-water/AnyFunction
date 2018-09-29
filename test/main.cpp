@@ -1,7 +1,4 @@
-#include "any_function.h"
-
 #include "executor.h"
-#include "graph.h"
 #include "tasks.h"
 #include "test.h"
 
@@ -9,28 +6,33 @@
 
 using namespace anyf;
 
+namespace {
 int create_3() { return 3; }
 
 int double_value(int x) { return x * 2; }
 
 int sum(int x, int y) { return x + y; }
 
-int main() {
-  any_function_test();
-  TaskSystem task_system;
-
-  // std::this_thread::sleep_for(std::chrono::milliseconds(10000));
-
-  auto g = make_graph<int>({"input"})
+auto create_simple_graph() {
+  return make_graph<int>({"input"})
                .add(create_3, "gen3")
                .add(double_value, "double", {"input"})
                .add(sum, "sum1", {"gen3", "gen3"})
                .add(sum, "sum2", {"sum1", "double"})
                .output<int>("sum2");
+}
 
-  auto result = execute_graph(g, task_system, 5);
+void execute_simple_graph() {
+  TaskSystem task_system;
+  std::cout << "result is " << execute_graph(create_simple_graph(), task_system, 5) << "\n";
+}
 
-  std::cout << "result is " << result << "\n";
+} // namespace
+
+int main() {
+  // execute_simple_graph();
+  // any_function_test();
+  stress_test();
 
   return 0;
 }

@@ -70,7 +70,7 @@ public:
 };
 
 class TaskSystem {
-  const unsigned _count = std::thread::hardware_concurrency();
+  unsigned _count = std::thread::hardware_concurrency();
   int _next_task_group = 1;
   std::vector<std::thread> _threads;
   std::vector<TaskQueue> _q;
@@ -100,9 +100,30 @@ class TaskSystem {
     }
   }
 
+  void run_while_waiting(int task_group) {
+    while(!is_task_group_complete(task_group)) {
+      unsigned spin_count = std::max<unsigned>(64, _count);
+      for(unsigned n = 0; n < spin_count; n++) {
+        auto tuple = _q[(_count - 1 + n) % _count].try_pop();
+        if(tuple) {
+          std::get<0> (*tuple)();
+          _group_task_counts[std::get<1>(*tuple)].fetch_sub(
+              1, std::memory_order_relaxed);
+          continue;
+        }
+      }
+    }
+  }
+
 public:
   TaskSystem() : _q(_count) {
-    for(unsigned i = 0; i < _count; i++) {
+    for(unsigned i = 0; i < _count - 1; i++) {
+      _threads.emplace_back([this, i]() { run(i); });
+    }
+  }
+
+  TaskSystem(unsigned count) : _count(count), _q(_count) {
+    for(unsigned i = 0; i < _count - 1; i++) {
       _threads.emplace_back([this, i]() { run(i); });
     }
   }
@@ -138,10 +159,7 @@ public:
     return val == 0;
   }
 
-  void wait_for_task_group(int task_group) const {
-    while(!is_task_group_complete(task_group)) {
-    }
-  }
+  void wait_for_task_group(int task_group) { run_while_waiting(task_group); }
 };
 
 } // namespace anyf

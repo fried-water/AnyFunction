@@ -47,5 +47,6 @@ struct Sentinal {
 };
 
 void any_function_test();
+void stress_test();
 
 #endif

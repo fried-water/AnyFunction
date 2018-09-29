@@ -66,12 +66,11 @@ class constructing_graph {
             util::make_std_vector<NodeVariant>(Source(make_type<Inputs>())...)),
         _names(), _outputs(sizeof...(Inputs)) {
     _names.reserve(sizeof...(Inputs));
+    ;
     for(auto&& name : std::move(names)) {
       assert(!name_exists(name));
       _names.push_back(name);
     }
-
-    idx_of(names[0]);
   }
 
   Type get_type(int i) const {
@@ -150,13 +149,17 @@ public:
   template <typename... Ts>
   friend constructing_graph<Ts...>
   make_graph(std::array<std::string, sizeof...(Ts)> names);
+
+  friend constructing_graph<> make_graph();
 };
 
 template <typename... Inputs>
-constructing_graph<Inputs...>
+inline constructing_graph<Inputs...>
 make_graph(std::array<std::string, sizeof...(Inputs)> names) {
   return constructing_graph<Inputs...>(std::move(names));
 }
+
+inline constructing_graph<> make_graph() { return constructing_graph<>({}); }
 
 } // namespace anyf
 
