@@ -19,28 +19,6 @@ const Sentinal& my_func_const_ref(Sentinal& a) {
   return a;
 }
 
-
-/*
-Calling invoke()
-Copy: 1
-Copy: 0
-0 + 1 + 2 + 3
-Move: 6
-Move: 6
-ref: 6
-ref: 6
-Calling invoke_with_any()
-Move: 1
-Move: 0
-Move: 1
-Move: 0
-0 + 1 + 2 + 3
-Move: 6
-Move: 6
-ref: 0
-ref: 1
-*/
-
 void any_function_test() {
 
   Sentinal w(0), x(1), y(2), z(3);
@@ -55,13 +33,13 @@ void any_function_test() {
   auto any_func_ref = make_any_function(my_func_ref);
   auto any_func_cref = make_any_function(my_func_const_ref);
 
-  Sentinal r =  any_func.invoke<Sentinal>(w, x, y, z);
-  Sentinal& r2 = any_func_ref.invoke<Sentinal&>(r);
-  const Sentinal& r3 = any_func_cref.invoke<const Sentinal&>(r2);
+  any_func.invoke<Sentinal>(w, x, y, z);
+  any_func_ref.invoke<Sentinal&>(y);
+  any_func_cref.invoke<const Sentinal&>(z);
 
   std::cout << "Calling invoke_with_any()\n";
 
-  Sentinal s_val = std::any_cast<Sentinal>(any_func.invoke_with_any(any_vec));
-  Sentinal* s_ptr = std::any_cast<Sentinal*>(any_func_ref.invoke_with_any(any_vec2));
-  const Sentinal* s_cptr = std::any_cast<const Sentinal*>(any_func_cref.invoke_with_any(any_vec3));
+  std::any_cast<Sentinal>(any_func.invoke_any(std::move(any_vec)));
+  std::any_cast<Sentinal*>(any_func_ref.invoke_any(std::move(any_vec2)));
+  std::any_cast<const Sentinal*>(any_func_cref.invoke_any(std::move(any_vec3)));
 }

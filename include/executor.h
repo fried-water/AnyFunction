@@ -7,19 +7,21 @@
 #include <boost/range/combine.hpp>
 
 #include <atomic>
+#include <optional>
+#include <memory>
 
 namespace anyf {
 
 class alignas(128) function_task {
-  std::atomic_int _ref_count;
+  std::atomic<int> _ref_count;
  public:
-  any_function func;
+  std::optional<any_function> func;
   small_vec<std::any, 3> inputs;
   std::vector<std::pair<function_task*, int>> outputs;
   std::any result;
 
   int decrement_ref_count() {
-    return _ref_count.fetch_sub(std::memory_order_release);
+    return _ref_count.fetch_sub(1, std::memory_order_release) - 1;
   }
 
   void set_ref_count(int x) {
@@ -30,7 +32,7 @@ class alignas(128) function_task {
     return _ref_count.load(std::memory_order_acquire);
   }
 
-  explicit function_task(any_function func, int num_inputs)
+  explicit function_task(std::optional<any_function> func, int num_inputs)
     : _ref_count(num_inputs), 
       func(std::move(func)), 
       inputs(num_inputs) {}
@@ -44,6 +46,7 @@ inline void propogate_outputs(function_task& task, small_vec<function_task*, 3>&
   auto propogate = [](const auto& pair, std::any result, small_vec<function_task*, 3>& tasks_to_run) {
     function_task* child_task = pair.first;
     child_task->inputs[pair.second] = std::move(result);
+
     if(child_task->decrement_ref_count() == 0) {
       tasks_to_run.push_back(child_task);
     }
@@ -61,7 +64,8 @@ inline void propogate_outputs(function_task& task, small_vec<function_task*, 3>&
 
 template <typename Executor, typename TaskGroupId>
 inline void execute_task(Executor& executor, function_task& task, TaskGroupId id) {
-  task.result = task.func.invoke_any(std::move(task.inputs));
+  
+  task.result = task.func->invoke_any(std::move(task.inputs));
 
   small_vec<function_task*, 3> tasks_to_run;
 
@@ -73,11 +77,11 @@ inline void execute_task(Executor& executor, function_task& task, TaskGroupId id
 }
 
 template <typename Output, typename Executor, typename... Inputs>
-Output execute_graph(const function_graph& g, Executor& executor, Inputs&&... inputs) {
-  std::vector<function_task> tasks;
+Output execute_graph(const function_graph<Output, Inputs...>& g, Executor& executor, Inputs&&... inputs) {
+  std::vector<std::unique_ptr<function_task>> tasks;
   tasks.reserve(g.nodes().size());
 
-  auto input_vec = util::make_vector<any_function::vec_type>(std::any(std::forward<Inputs>(inputs))...);
+  auto input_vec = util::make_vector<any_function::vec_type>(std::forward<Inputs>(inputs)...);
   int parameter_index = 0;
 
   // Create tasks
@@ -85,36 +89,47 @@ Output execute_graph(const function_graph& g, Executor& executor, Inputs&&... in
     return std::visit([&](const auto& arg) {
       using T = std::decay_t<decltype(arg)>;
       if constexpr (std::is_same_v<T, Source>) {
-        function_task task(boost::none, 0);
-        task.result = std::move(input_vec[parameter_index]);
+        auto task = std::make_unique<function_task>(std::nullopt, 1);
+        task->result = std::move(input_vec[parameter_index]);
         parameter_index++;
 
         return task;
       } else if constexpr (std::is_same_v<T, Sink>) {
-        return function_task(boost::none, 2);
+        return std::make_unique<function_task>(std::nullopt, 2);
       } else {
-        return function_task(std::get<InternalNode>(variant).func, arg.inputs.size());
+        return std::make_unique<function_task>(std::get<InternalNode>(variant).func, arg.inputs.size());
       }
     }, variant);
   });
 
+  assert(tasks.size() == g.nodes().size());
+
   // Connect outputs
-  for(int i = 0; i < g.nodes().size(); ++i) {
+  for(int i = 0; i < static_cast<int>(g.nodes().size()); ++i) {
     for(const auto& output_pair : g.outputs(i)) {
-      tasks[i].outputs.emplace_back(&tasks[output_pair.first], output_pair.second);
+      tasks[i]->outputs.emplace_back(tasks[output_pair.first].get(), output_pair.second);
     }
   }
 
   small_vec<function_task*, 3> tasks_to_run;
 
+  // Launch 0 input tasks
+  boost::for_each(tasks, [&tasks_to_run](auto& task) {
+    if(task->ref_count() == 0) {
+      tasks_to_run.push_back(task.get());
+    }
+  });
+
   // Propogate inputs
-  boost::for_each(boost::combine(g.nodes(), tasks), [&tasks_to_run](auto& tuple) {
-    auto& [variant, task] = tuple;
+  boost::for_each(boost::combine(g.nodes(), tasks), [&tasks_to_run](auto&& tuple) {
+    const auto& variant = boost::get<0>(tuple);
+    function_task& task = *boost::get<1>(tuple);
 
     if(std::holds_alternative<Source>(variant)) {
       propogate_outputs(task, tasks_to_run);
     }
   });
+
 
   auto task_group_id = executor.create_task_group();
 
@@ -125,12 +140,13 @@ Output execute_graph(const function_graph& g, Executor& executor, Inputs&&... in
 
   executor.wait_for_task_group(task_group_id);
 
-  for(auto& tuple : boost::combine(g.nodes(), tasks)) {
+  for(auto&& tuple : boost::combine(g.nodes(), tasks)) {
     const auto& variant = boost::get<0>(tuple);
-    function_task& task = boost::get<1>(tuple);
+    function_task& task = *boost::get<1>(tuple);
 
     if(std::holds_alternative<Sink>(variant)) {
-      return std::any_cast<Output>(task.result);
+      assert(task.ref_count() == 1);
+      return std::any_cast<Output>(std::move(task.inputs[0]));
     }
   }
 

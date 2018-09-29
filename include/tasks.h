@@ -1,18 +1,19 @@
 #ifndef TASKS_H
 #define TASKS_H
 
-#include <boost/optional.hpp>
 
+#include <atomic>
 #include <condition_variable>
 #include <deque>
 #include <functional>
+#include <optional>
 #include <mutex>
 #include <thread>
 
 namespace anyf {
 
 class TaskQueue {
-  std::deque<std::function<void()>> _q;
+  std::deque<std::tuple<std::function<void()>, int>> _q;
   bool _done = false;
   std::mutex _mutex;
   std::condition_variable _cv;
@@ -26,38 +27,38 @@ class TaskQueue {
     _cv.notify_all();
   }
 
-  boost::optional<std::function<void()>> pop() {
+  std::optional<std::tuple<std::function<void()>, int>> pop() {
     std::unique_lock<std::mutex> lock{_mutex};
     while (_q.empty() && !_done) _cv.wait(lock);
-    if(_q.empty()) return boost::none;
+    if(_q.empty()) return std::nullopt;
     auto x = std::move(_q.front());
     _q.pop_front();
     return x;
   }
 
-  boost::optional<std::function<void()>> try_pop() {
+  std::optional<std::tuple<std::function<void()>, int>> try_pop() {
     std::unique_lock<std::mutex> lock{_mutex, std::try_to_lock};
-    if(!lock || _q.empty()) return boost::none;
+    if(!lock || _q.empty()) return std::nullopt;
     auto x = std::move(_q.front());
     _q.pop_front();
     return x;
   }
 
   template <typename F>
-  void push(F&& f) {
+  void push(int task_group, F&& f) {
     {
       std::unique_lock<std::mutex> lock{_mutex};
-      _q.emplace_back(std::forward<F>(f));
+      _q.emplace_back(std::forward<F>(f), task_group);
     }
     _cv.notify_one();
   }
 
   template <typename F>
-  bool try_push(F&& f) {
+  bool try_push(int task_group, F&& f) {
     {
       std::unique_lock<std::mutex> lock{_mutex, std::try_to_lock};
       if(!lock) return false;
-      _q.emplace_back(std::forward<F>(f));
+      _q.emplace_back(std::forward<F>(f), task_group);
     }
     _cv.notify_one();
 
@@ -67,24 +68,29 @@ class TaskQueue {
 
 class TaskSystem {
   const unsigned _count = std::thread::hardware_concurrency();
+  int _next_task_group = 1;
   std::vector<std::thread> _threads;
   std::vector<TaskQueue> _q;
   std::atomic<unsigned> _index = 0;
+
+  std::unordered_map<int, std::atomic<unsigned>> _group_task_counts;
 
   void run(unsigned i) {
     while(true) {
       unsigned spin_count = std::max<unsigned>(16, _count);
       for(unsigned n = 0; n < spin_count; n++) {
-        auto f = _q[(i+n) % _count].try_pop();
-        if(f) {
-          (*f)();
+        auto tuple = _q[(i+n) % _count].try_pop();
+        if(tuple) {
+          std::get<0>(*tuple)();
+          _group_task_counts[std::get<1>(*tuple)].fetch_sub(1, std::memory_order_relaxed);
           continue;
         }
       }
 
-      auto f = _q[i].pop();
-      if(!f) break;
-      (*f)();
+      auto tuple = _q[i].pop();
+      if(!tuple) break;
+      std::get<0>(*tuple)();
+      _group_task_counts[std::get<1>(*tuple)].fetch_sub(1, std::memory_order_relaxed);
     }
   }
 
@@ -103,19 +109,31 @@ class TaskSystem {
   template <typename F>
   void async(int task_group, F&& f) {
     auto i = _index++;
+    _group_task_counts[task_group].fetch_add(1, std::memory_order_relaxed);
 
     for(unsigned n = 0; n < _count; n++) {
-       if(_q[(i+n) % _count].try_push(std::forward<F>(f))) return;
+       if(_q[(i+n) % _count].try_push(task_group, std::forward<F>(f))) return;
     }
 
-    _q[i % _count].push(std::forward<F>(f));
+    _q[i % _count].push(task_group, std::forward<F>(f));
   }
 
-  // TODO
   int create_task_group() {
-    return 0;
+    return _next_task_group++;
   }
-  void wait_for_task_group(int task_group) { }
+
+  bool is_task_group_complete(int task_group) const {
+    auto it = _group_task_counts.find(task_group);
+
+    assert(it != _group_task_counts.end());
+    int val = it->second.load(std::memory_order_relaxed);
+
+    return val == 0;
+  }
+
+  void wait_for_task_group(int task_group) const {
+    while(!is_task_group_complete(task_group)) {}
+  }
 
 };
 

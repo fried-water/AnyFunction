@@ -2,79 +2,41 @@
 
 #include "graph.h"
 #include "test.h"
-//#include "executor.h"
-//#include "tasks.h"
+#include "executor.h"
+#include "tasks.h"
 
 #include <iostream>
 
 using namespace anyf;
 
-struct MyStruct {
-  int64_t data = 0;
-  int64_t data1[1500];
+int create_3() {
+  return 3;
+}
 
+int double_value(int x) {
+  return x * 2;
+}
 
-  MyStruct(int data) : data(data) {
-    std::cout << "MyStruct(int)\n";
-  }
-
-  MyStruct(const MyStruct& x) : data(x.data) {
-    std::cout << "MyStruct(const MyStruct&)\n";
-  }
-
-  MyStruct(MyStruct&& x) : data(x.data) {
-    std::cout << "MyStruct(MyStruct&&)\n";
-  }
-
-  MyStruct& operator=(const MyStruct& x) {
-    std::cout << "MyStruct = const MyStruct&\n";
-    data = x.data;
-    return *this;
-  }
-
-  MyStruct& operator=(MyStruct&& x) {
-    std::cout << "MyStruct = MyStruct&&\n";
-    data = x.data;
-    return *this;
-  }
-};
-
-MyStruct const_ref_func(const MyStruct& a) {
-  std::cout << a.data << std::endl;
-  return a;
+int sum(int x, int y) {
+  return x  + y;
 }
 
 int main() {
   any_function_test();
+  TaskSystem task_system;
 
-//   auto func = [](MyStruct b) {
-//     std::cout << b.data << std::endl;
-//     return MyStruct(b.data* 3);
-//   };
+  // std::this_thread::sleep_for(std::chrono::milliseconds(10000));
 
-//   std::cout << "-----Component\n";
-//   auto bb = make_any_function(func).invoke<MyStruct>(MyStruct(5));
-//   std::cout << "-----Component 2\n";
-//   const auto& aa = make_any_function(const_ref_func).invoke<MyStruct>(MyStruct(5));
-//   std::cout << "-----Raw\n";
-//   auto cc = func(MyStruct(5));
-//   std::cout << "Hello World " << aa.data << " " << bb.data << " " << cc.data << "\n";
+  auto g = make_graph<int>({"input"})
+        .add(create_3, "gen3")
+        .add(double_value, "double", {"input"})
+        .add(sum, "sum1", {"gen3", "gen3"})
+        .add(sum, "sum2", {"sum1", "double"})
+        .output<int>("sum2");
 
-//   ConstructingGraph g;
+  auto result = execute_graph(g, task_system, 5);
 
-//   auto in1 = g.input<MyStruct>();
-//   auto mid1 = g.add(func, in1);
-//   auto final_graph = g.output(mid1);
+  std::cout << "result is " << result << "\n";
 
-//   // TaskSystem task_system;
-
-//   // execute_graph<MyStruct>(final_graph, task_system, MyStruct(7));
-
-//   int sum = 0;
-//   for(int i = 0; i < 100000; i++) {
-//     auto temp = MyStruct(3);
-//     sum += temp.data;
-//   }
-
-  // return sum;
+  return 0;
 }
