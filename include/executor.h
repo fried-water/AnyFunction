@@ -76,7 +76,7 @@ inline void execute_task(Executor& executor, function_task& task,
 }
 
 template <typename Output, typename Executor, typename... Inputs>
-Output execute_graph(const function_graph<Output, Inputs...>& g,
+Output execute_graph(const function_graph<Output, std::decay_t<Inputs>...>& g,
                      Executor& executor, Inputs&&... inputs) {
   std::vector<std::unique_ptr<function_task>> tasks;
   tasks.reserve(g.nodes().size());

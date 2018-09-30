@@ -9,9 +9,7 @@ using namespace anyf;
 namespace {
 int create_int() { return 1; }
 
-int sum(int x, int y) {
-  return x + y;
-}
+int sum(int x, int y) { return x + y; }
 
 function_graph<int> create_graph(int depth) {
   auto g = make_graph();
@@ -39,8 +37,7 @@ void stress_test() {
   const int num_executions = 100;
   TaskSystem task_system;
 
-  std::cout << "Thread count: " << std::thread::hardware_concurrency()
-            << '\n';
+  std::cout << "Thread count: " << std::thread::hardware_concurrency() << '\n';
   std::cout << "Creating graph of size " << ((1 << depth) * 2 - 1) << "\n";
 
   auto t0 = std::chrono::steady_clock::now();
