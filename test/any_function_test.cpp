@@ -4,44 +4,124 @@
 
 using namespace anyf;
 
-Sentinal my_func(Sentinal a, const Sentinal b, Sentinal& c, const Sentinal& d) {
-  std::cout << a.data << " + " << b.data << " + " << c.data << " + " << d.data
-            << "\n";
-  return Sentinal(a.data + b.data + c.data + d.data);
+void test_input_val() {
+  auto test_val = [](Sentinal a, int copies, int moves) {
+    assert(a.moves == moves);
+    assert(a.copies == copies);
+  };
+
+  auto func = make_any_function(test_val);
+
+  Sentinal x;
+  const Sentinal c_x;
+
+  test_val(x, 1, 0);
+  test_val(std::move(x), 0, 1);
+  test_val(c_x, 1, 0);
+  test_val(std::move(c_x), 1, 0);
+
+  func.invoke<void>(x, 1, 0);
+  func.invoke<void>(std::move(x), 0, 1);
+  func.invoke<void>(c_x, 1, 0);
+  func.invoke<void>(std::move(c_x), 1, 0);
 }
 
-Sentinal& my_func_ref(Sentinal& a) {
-  std::cout << "ref: " << a.data << "\n";
-  return a;
+void test_input_ref() {
+  auto test_ref = [](Sentinal& a, int copies, int moves) {
+    assert(a.moves == moves);
+    assert(a.copies == copies);
+  };
+
+  auto func = make_any_function(test_ref);
+
+  Sentinal x;
+  const Sentinal c_x;
+
+  test_ref(x, 0, 0);
+  // test_ref(std::move(x), 0, 0);   // Not allowed
+  // test_ref(c_x, 0, 0);            // Not allowed
+  // test_ref(std::move(c_x), 0, 0); // Not allowed
+
+  func.invoke<void>(x, 0, 0);
+  assert_throws<bad_any_invocation>(
+      [&]() { func.invoke<void>(std::move(x), 0, 0); });
+  // assert_throws<bad_any_invocation>([&](){func.invoke<void>(c_x, 0, 0);}); //
+  // TODO throw exception
+  // assert_throws<bad_any_invocation>([&](){func.invoke<void>(std::move(c_x),
+  // 0, 0);}); // TODO throw exception
 }
 
-const Sentinal& my_func_const_ref(Sentinal& a) {
-  std::cout << "ref: " << a.data << "\n";
-  return a;
+void test_input_const_ref() {
+  auto test_const_ref = [](const Sentinal& a, int copies, int moves) {
+    assert(a.moves == moves);
+    assert(a.copies == copies);
+  };
+
+  auto func = make_any_function(test_const_ref);
+
+  Sentinal x;
+  const Sentinal c_x;
+
+  test_const_ref(x, 0, 0);
+  test_const_ref(std::move(x), 0, 0);
+  test_const_ref(c_x, 0, 0);
+  test_const_ref(std::move(c_x), 0, 0);
+
+  func.invoke<void>(x, 0, 0);
+  func.invoke<void>(std::move(x), 0, 0);
+  func.invoke<void>(c_x, 0, 0);
+  func.invoke<void>(std::move(c_x), 0, 0);
+}
+
+void test_input_rref() {
+  auto test_rref = [](Sentinal&& a, int copies, int moves) {
+    assert(a.moves == moves);
+    assert(a.copies == copies);
+  };
+
+  auto func = make_any_function(test_rref);
+
+  Sentinal x;
+  const Sentinal c_x;
+
+  // test_rref(x, 0, 0); // Not allowed
+  test_rref(std::move(x), 0, 0);
+  // test_rref(c_x, 0, 0); // Not allowed
+  // test_rref(std::move(c_x), 0, 0); // Not allowed
+
+  assert_throws<bad_any_invocation>([&]() { func.invoke<void>(x, 0, 0); });
+  func.invoke<void>(std::move(x), 0, 0);
+  assert_throws<bad_any_invocation>([&]() { func.invoke<void>(c_x, 0, 0); });
+  assert_throws<bad_any_invocation>(
+      [&]() { func.invoke<void>(std::move(c_x), 0, 0); });
+}
+
+void test_input_const_rref() {
+  auto test_const_rref = [](const Sentinal&& a, int copies, int moves) {
+    assert(a.moves == moves);
+    assert(a.copies == copies);
+  };
+
+  auto func = make_any_function(test_const_rref);
+
+  Sentinal x;
+  const Sentinal c_x;
+
+  // test_const_rref(x, 0, 0); // Not allowed
+  test_const_rref(std::move(x), 0, 0);
+  // test_const_rref(c_x, 0, 0); // Not allowed
+  test_const_rref(std::move(c_x), 0, 0);
+
+  assert_throws<bad_any_invocation>([&]() { func.invoke<void>(x, 0, 0); });
+  func.invoke<void>(std::move(x), 0, 0);
+  assert_throws<bad_any_invocation>([&]() { func.invoke<void>(c_x, 0, 0); });
+  // func.invoke<void>(std::move(c_x), 0, 0); // TODO need to fix this
 }
 
 void any_function_test() {
-
-  Sentinal w(0), x(1), y(2), z(3);
-
-  any_function::vec_type any_vec{std::any(w), std::any(x), std::any(y),
-                                 std::any(z)};
-  any_function::vec_type any_vec2{std::any(w)};
-  any_function::vec_type any_vec3{std::any(x)};
-
-  std::cout << "Calling invoke()\n";
-
-  auto any_func = make_any_function(my_func);
-  auto any_func_ref = make_any_function(my_func_ref);
-  auto any_func_cref = make_any_function(my_func_const_ref);
-
-  any_func.invoke<Sentinal>(w, x, y, z);
-  any_func_ref.invoke<Sentinal&>(y);
-  any_func_cref.invoke<const Sentinal&>(z);
-
-  std::cout << "Calling invoke_with_any()\n";
-
-  std::any_cast<Sentinal>(any_func.invoke_any(std::move(any_vec)));
-  std::any_cast<Sentinal*>(any_func_ref.invoke_any(std::move(any_vec2)));
-  std::any_cast<const Sentinal*>(any_func_cref.invoke_any(std::move(any_vec3)));
+  test_input_val();
+  test_input_ref();
+  test_input_const_ref();
+  test_input_rref();
+  test_input_const_rref();
 }

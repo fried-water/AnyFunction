@@ -1,10 +1,10 @@
 #ifndef GRAPH_H
 #define GRAPH_H
 
-#include "any_function.h"
-#include "type.h"
+#include "any_value_function.h"
 #include "util.h"
 
+#include <iostream>
 #include <numeric>
 #include <variant>
 
@@ -21,78 +21,106 @@ template <typename Output, typename... Inputs>
 class function_graph;
 
 struct Source {
-  Type type;
-  Source(Type type) : type(type) {}
-};
-
-struct Sink {
-  int node_idx;
-  Sink(int node_idx) : node_idx(node_idx) {}
+  std::type_index type;
+  Source(std::type_index type) : type(type) {}
 };
 
 struct InternalNode {
-  any_function func;
+  any_value_function func;
   small_vec<int, 3> inputs;
 
-  InternalNode(any_function func, small_vec<int, 3> inputs)
+  InternalNode(any_value_function func, small_vec<int, 3> inputs)
       : func(std::move(func)), inputs(std::move(inputs)) {}
 };
 
 template <typename Output, typename... Inputs>
 class function_graph {
 public:
-  using NodeVariant = std::variant<Source, InternalNode, Sink>;
+  using NodeVariant = std::variant<Source, InternalNode>;
 
   friend class constructing_graph<Inputs...>;
 
+  int graph_output() const { return _graph_output; }
   const std::vector<NodeVariant>& nodes() const { return _nodes; }
   const std::vector<std::string>& names() const { return _names; }
   const small_vec_base<std::pair<int, int>>& outputs(int i) const {
     return _outputs[i];
   }
 
+  function_graph<Output, Inputs...>
+  decorate(std::function<std::function<std::any(small_vec<std::any, 3>&&)>(
+               std::string name, any_value_function func)>
+               decorator) {
+    std::vector<NodeVariant> nodes;
+    nodes.reserve(_nodes.size());
+
+    for(int i = 0; i < static_cast<int>(_nodes.size()); i++) {
+      const auto& variant = _nodes[i];
+
+      if(std::holds_alternative<InternalNode>(variant)) {
+        const auto& node = std::get<InternalNode>(variant);
+        const auto& input_types = node.func.input_types();
+        small_vec<std::type_index, 3> new_input_types(input_types.begin(),
+                                                      input_types.end());
+        std::function<std::any(small_vec<std::any, 3> &&)> wrapped_function =
+            decorator(_names[i], node.func);
+
+        nodes.emplace_back(InternalNode(
+            any_value_function(wrapped_function, node.func.output_type(),
+                               std::move(new_input_types)),
+            node.inputs));
+      } else {
+        nodes.push_back(variant);
+      }
+    }
+
+    return function_graph(nodes, names(), _outputs, graph_output());
+  }
+
 private:
   function_graph(std::vector<NodeVariant> nodes, std::vector<std::string> names,
-                 std::vector<small_vec<std::pair<int, int>, 3>> outputs)
+                 std::vector<small_vec<std::pair<int, int>, 3>> outputs,
+                 int graph_output)
       : _nodes(std::move(nodes)), _names(std::move(names)),
-        _outputs(std::move(outputs)) {}
+        _outputs(std::move(outputs)), _graph_output(graph_output) {}
 
   std::vector<NodeVariant> _nodes;
   std::vector<std::string> _names;
   // node -> id, idx
   std::vector<small_vec<std::pair<int, int>, 3>> _outputs;
+  int _graph_output;
 };
 
 template <typename... Inputs>
 class constructing_graph {
-  using NodeVariant = std::variant<Source, InternalNode, Sink>;
+  using NodeVariant = std::variant<Source, InternalNode>;
 
 public:
   template <typename F>
   constructing_graph& add(F f, std::string name) {
-    return add_internal(make_any_function(std::move(f)), std::move(name), {});
+    return add_internal(make_any_value_function(std::move(f)), std::move(name),
+                        {});
   }
 
   template <typename F>
   constructing_graph& add(F f, std::string name,
                           small_vec<std::string, 3> inputs) {
 
-    return add_internal(
-        make_any_function(std::move(f)), std::move(name),
-        util::map<small_vec<int, 3>>(
-            std::move(inputs),
-            [this](const std::string_view& name) { return idx_of(name); }));
+    return add_internal(make_any_value_function(std::move(f)), std::move(name),
+                        util::map<small_vec<int, 3>>(
+                            inputs, [this](const std::string_view& name) {
+                              return idx_of(name);
+                            }));
   }
 
   template <typename Output, typename... InnerInputs>
-  constructing_graph& add(function_graph<Output, InnerInputs...> g,
+  constructing_graph& add(const function_graph<Output, InnerInputs...>& graph,
                           std::string name, small_vec<std::string, 3> inputs) {
 
     const int index_offset = _nodes.size() - sizeof...(InnerInputs);
 
     boost::for_each(
-        boost::combine(g.nodes(), g.names()),
-        [this, name, inputs, index_offset](const auto& tuple) {
+        boost::combine(graph.nodes(), graph.names()), [&](const auto& tuple) {
           const auto& variant = boost::get<0>(tuple);
           const auto& inner_name = boost::get<1>(tuple);
 
@@ -107,11 +135,10 @@ public:
                     return old_input + index_offset;
                   }
                 }));
-          } else if(std::holds_alternative<Sink>(variant)) {
-            const auto& sink = std::get<Sink>(variant);
-            _aliases.emplace(name, sink.node_idx + index_offset);
           }
         });
+
+    _aliases.emplace(std::move(name), graph.graph_output() + index_offset);
 
     return *this;
   }
@@ -128,8 +155,8 @@ private:
   std::unordered_map<std::string, int> _aliases;
 
   constructing_graph(std::array<std::string, sizeof...(Inputs)> names)
-      : _nodes(
-            util::make_std_vector<NodeVariant>(Source(make_type<Inputs>())...)),
+      : _nodes(util::make_std_vector<NodeVariant>(
+            Source(std::type_index(typeid(Inputs)))...)),
         _names(), _outputs(sizeof...(Inputs)) {
     _names.reserve(sizeof...(Inputs));
     for(auto&& name : std::move(names)) {
@@ -139,8 +166,8 @@ private:
   }
 
   constructing_graph(int num_inputs)
-      : _nodes(
-            util::make_std_vector<NodeVariant>(Source(make_type<Inputs>())...)),
+      : _nodes(util::make_std_vector<NodeVariant>(
+            Source(std::type_index(typeid(Inputs)))...)),
         _names(), _outputs(sizeof...(Inputs)) {
     _names.reserve(sizeof...(Inputs));
     for(int i = 0; i < num_inputs; i++) {
@@ -148,14 +175,12 @@ private:
     }
   }
 
-  Type get_type(int i) const {
+  std::type_index get_type(int i) const {
     return std::visit(
         [this](const auto& arg) {
           using T = std::decay_t<decltype(arg)>;
           if constexpr(std::is_same_v<T, Source>) {
             return arg.type;
-          } else if constexpr(std::is_same_v<T, Sink>) {
-            return get_type(arg.node_idx);
           } else {
             return arg.func.output_type();
           }
@@ -180,19 +205,19 @@ private:
     return alias_it->second;
   }
 
-  constructing_graph& add_internal(any_function f, std::string name,
+  constructing_graph& add_internal(any_value_function f, std::string name,
                                    small_vec<int, 3> inputs) {
     assert(!name_exists(name));
 
     auto node = InternalNode(std::move(f), std::move(inputs));
 
     for(int i = 0; i < static_cast<int>(node.inputs.size()); i++) {
-      Type output_type = get_type(node.inputs[i]);
-      Type input_type = node.func.input_types()[i];
+      auto output_type = get_type(node.inputs[i]);
+      auto input_type = node.func.input_types()[i];
 
       if(output_type != input_type) {
-        std::cout << "Output : " << output_type << " does not match "
-                  << input_type << std::endl;
+        std::cout << "Output : " << output_type.name() << " does not match "
+                  << input_type.name() << std::endl;
         throw 0;
       }
 
@@ -207,13 +232,8 @@ private:
 
   template <typename Output>
   function_graph<Output, Inputs...> output_internal(int idx) {
-    _outputs[idx].emplace_back(_nodes.size(), 0);
-    _nodes.emplace_back(Sink(idx));
-    _names.emplace_back(".out");
-    _outputs.emplace_back();
-
     return function_graph<Output, Inputs...>(
-        std::move(_nodes), std::move(_names), std::move(_outputs));
+        std::move(_nodes), std::move(_names), std::move(_outputs), idx);
   }
 
   template <typename... Ts>
@@ -223,11 +243,12 @@ private:
   friend constructing_graph<> make_graph();
 
   template <typename Out, typename... Is, typename... Fs>
-  friend function_graph<Out, Is...> make_pipeline(Fs... fs);
+  friend function_graph<Out, Is...>
+  make_pipeline(const std::vector<std::string>& names, std::tuple<Fs...> fs);
 };
 
 template <typename... Inputs>
-inline constructing_graph<Inputs...>
+constructing_graph<Inputs...>
 make_graph(std::array<std::string, sizeof...(Inputs)> names) {
   return constructing_graph<Inputs...>(std::move(names));
 }
@@ -235,24 +256,28 @@ make_graph(std::array<std::string, sizeof...(Inputs)> names) {
 inline constructing_graph<> make_graph() { return constructing_graph<>({}); }
 
 template <typename Output, typename... Inputs, typename... Fs>
-inline function_graph<Output, Inputs...> make_pipeline(Fs... fs) {
-  auto g = constructing_graph<Inputs...>(sizeof...(Inputs));
+function_graph<Output, Inputs...>
+make_pipeline(const std::vector<std::string>& names,
+              std::tuple<Fs...> func_tuple) {
+  static_assert(sizeof...(Fs) > 0);
 
-  auto funcs =
-      util::make_std_vector<any_function>(make_any_function(std::move(fs))...);
+  assert(names.size() == sizeof...(Fs));
 
-  small_vec<int, 3> first_inputs(sizeof...(Inputs));
-  std::iota(first_inputs.begin(), first_inputs.end(), 0);
-  g.add_internal(std::move(funcs[0]), std::to_string(sizeof...(Inputs)),
-                 std::move(first_inputs));
+  std::array<std::string, sizeof...(Inputs)> input_names;
+  std::generate(input_names.begin(), input_names.end(),
+                [i = 0]() mutable { return std::to_string(i++); });
 
-  for(int i = 1; i < static_cast<int>(sizeof...(Fs)); i++) {
-    g.add_internal(std::move(funcs[i]), std::to_string(sizeof...(Inputs) + i),
-                   {static_cast<int>(sizeof...(Inputs)) + i - 1});
-  }
+  auto g = constructing_graph<Inputs...>(input_names);
+  g.add(std::get<0>(std::move(func_tuple)), names[0],
+        util::map<small_vec<std::string, 3>>(
+            input_names, [](const std::string& name) { return name; }));
 
-  return g.template output_internal<Output>(sizeof...(Inputs) + sizeof...(Fs) -
-                                            1);
+  util::tuple_for_each(util::drop_first(std::move(func_tuple)),
+                       [&](int i, auto&& func) mutable {
+                         g.add(func, names[i + 1], {names[i]});
+                       });
+
+  return g.template output<Output>(names.back());
 }
 
 } // namespace anyf

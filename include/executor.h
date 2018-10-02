@@ -16,7 +16,7 @@ class alignas(128) function_task {
   std::atomic<int> _ref_count;
 
 public:
-  std::optional<any_function> func;
+  std::optional<any_value_function> func;
   small_vec<std::any, 3> inputs;
   std::vector<std::pair<function_task*, int>> outputs;
   std::any result;
@@ -29,7 +29,7 @@ public:
 
   int ref_count() { return _ref_count.load(std::memory_order_acquire); }
 
-  explicit function_task(std::optional<any_function> func, int num_inputs)
+  explicit function_task(std::optional<any_value_function> func, int num_inputs)
       : _ref_count(num_inputs), func(std::move(func)), inputs(num_inputs) {}
 };
 
@@ -60,10 +60,8 @@ inline void propogate_outputs(function_task& task,
 }
 
 template <typename Executor, typename TaskGroupId>
-inline void execute_task(Executor& executor, function_task& task,
-                         TaskGroupId id) {
-
-  task.result = task.func->invoke_any(std::move(task.inputs));
+void execute_task(Executor& executor, function_task& task, TaskGroupId id) {
+  task.result = task.func->invoke(std::move(task.inputs));
 
   small_vec<function_task*, 3> tasks_to_run;
 
@@ -81,7 +79,7 @@ Output execute_graph(const function_graph<Output, std::decay_t<Inputs>...>& g,
   std::vector<std::unique_ptr<function_task>> tasks;
   tasks.reserve(g.nodes().size());
 
-  auto input_vec = util::make_vector<any_function::vec_type>(
+  auto input_vec = util::make_vector<any_value_function::vec_type>(
       std::forward<Inputs>(inputs)...);
   int parameter_index = 0;
 
@@ -97,8 +95,6 @@ Output execute_graph(const function_graph<Output, std::decay_t<Inputs>...>& g,
                 parameter_index++;
 
                 return task;
-              } else if constexpr(std::is_same_v<T, Sink>) {
-                return std::make_unique<function_task>(std::nullopt, 2);
               } else {
                 return std::make_unique<function_task>(
                     std::get<InternalNode>(variant).func, arg.inputs.size());
@@ -116,6 +112,10 @@ Output execute_graph(const function_graph<Output, std::decay_t<Inputs>...>& g,
                                      output_pair.second);
     }
   }
+
+  // Create task to hold result and connect it
+  function_task result_task(std::nullopt, 2);
+  tasks[g.graph_output()]->outputs.emplace_back(&result_task, 0);
 
   small_vec<function_task*, 3> tasks_to_run;
 
@@ -149,17 +149,7 @@ Output execute_graph(const function_graph<Output, std::decay_t<Inputs>...>& g,
 
   executor.wait_for_task_group(task_group_id);
 
-  for(auto&& tuple : boost::combine(g.nodes(), tasks)) {
-    const auto& variant = boost::get<0>(tuple);
-    function_task& task = *boost::get<1>(tuple);
-
-    if(std::holds_alternative<Sink>(variant)) {
-      assert(task.ref_count() == 1);
-      return std::any_cast<Output>(std::move(task.inputs[0]));
-    }
-  }
-
-  throw 0;
+  return std::any_cast<Output>(std::move(result_task.inputs[0]));
 }
 
 } // namespace anyf
