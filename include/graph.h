@@ -14,6 +14,8 @@
 
 namespace anyf {
 
+enum class pass_type { move_or_copy, move, copy, ref };
+
 template <typename... Inputs>
 class constructing_graph;
 
@@ -28,9 +30,12 @@ struct Source {
 struct InternalNode {
   any_value_function func;
   small_vec<int, 3> inputs;
+  small_vec<pass_type, 3> pass_types;
 
-  InternalNode(any_value_function func, small_vec<int, 3> inputs)
-      : func(std::move(func)), inputs(std::move(inputs)) {}
+  InternalNode(any_value_function func, small_vec<int, 3> inputs,
+               small_vec<pass_type, 3> pass_types)
+      : func(std::move(func)), inputs(std::move(inputs)),
+        pass_types(std::move(pass_types)) {}
 };
 
 template <typename Output, typename... Inputs>
@@ -47,10 +52,10 @@ public:
     return _outputs[i];
   }
 
-  function_graph<Output, Inputs...>
-  decorate(std::function<std::function<std::any(small_vec<std::any, 3>&&)>(
-               std::string name, any_value_function func)>
-               decorator) {
+  function_graph<Output, Inputs...> decorate(
+      std::function<std::function<std::any(any_value_function::vec_ptr_type&&)>(
+          std::string name, any_value_function func)>
+          decorator) {
     std::vector<NodeVariant> nodes;
     nodes.reserve(_nodes.size());
 
@@ -60,15 +65,19 @@ public:
       if(std::holds_alternative<InternalNode>(variant)) {
         const auto& node = std::get<InternalNode>(variant);
         const auto& input_types = node.func.input_types();
+        const auto& input_crefs = node.func.input_crefs();
         small_vec<std::type_index, 3> new_input_types(input_types.begin(),
                                                       input_types.end());
-        std::function<std::any(small_vec<std::any, 3> &&)> wrapped_function =
-            decorator(_names[i], node.func);
-
+        small_vec<bool, 3> new_pass_types(input_crefs.begin(),
+                                          input_crefs.end());
         nodes.emplace_back(InternalNode(
-            any_value_function(wrapped_function, node.func.output_type(),
-                               std::move(new_input_types)),
-            node.inputs));
+            any_value_function(
+                decorator(_names[i], node.func), node.func.output_type(),
+                std::move(new_input_types), std::move(new_pass_types)),
+            node.inputs,
+            util::map<small_vec<pass_type, 3>>(input_crefs, [](bool is_cref) {
+              return is_cref ? pass_type::ref : pass_type::move_or_copy;
+            })));
       } else {
         nodes.push_back(variant);
       }
@@ -160,18 +169,8 @@ private:
         _names(), _outputs(sizeof...(Inputs)) {
     _names.reserve(sizeof...(Inputs));
     for(auto&& name : std::move(names)) {
-      assert(!name_exists(name));
-      _names.push_back(name);
-    }
-  }
-
-  constructing_graph(int num_inputs)
-      : _nodes(util::make_std_vector<NodeVariant>(
-            Source(std::type_index(typeid(Inputs)))...)),
-        _names(), _outputs(sizeof...(Inputs)) {
-    _names.reserve(sizeof...(Inputs));
-    for(int i = 0; i < num_inputs; i++) {
-      _names.push_back(std::to_string(i));
+      assert(!name_exists("." + name));
+      _names.push_back("." + name);
     }
   }
 
@@ -208,8 +207,15 @@ private:
   constructing_graph& add_internal(any_value_function f, std::string name,
                                    small_vec<int, 3> inputs) {
     assert(!name_exists(name));
+    assert(f.input_types().size() == inputs.size());
 
-    auto node = InternalNode(std::move(f), std::move(inputs));
+    auto pass_types =
+        util::map<small_vec<pass_type, 3>>(f.input_crefs(), [](bool is_cref) {
+          return is_cref ? pass_type::ref : pass_type::move_or_copy;
+        });
+
+    auto node =
+        InternalNode(std::move(f), std::move(inputs), std::move(pass_types));
 
     for(int i = 0; i < static_cast<int>(node.inputs.size()); i++) {
       auto output_type = get_type(node.inputs[i]);
@@ -270,7 +276,7 @@ make_pipeline(const std::vector<std::string>& names,
   auto g = constructing_graph<Inputs...>(input_names);
   g.add(std::get<0>(std::move(func_tuple)), names[0],
         util::map<small_vec<std::string, 3>>(
-            input_names, [](const std::string& name) { return name; }));
+            input_names, [](const std::string& name) { return "." + name; }));
 
   util::tuple_for_each(util::drop_first(std::move(func_tuple)),
                        [&](int i, auto&& func) mutable {

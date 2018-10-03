@@ -17,8 +17,10 @@ class alignas(128) function_task {
 
 public:
   std::optional<any_value_function> func;
-  small_vec<std::any, 3> inputs;
-  std::vector<std::pair<function_task*, int>> outputs;
+  small_vec<std::any, 3> input_vals;
+  small_vec<std::any*, 3> input_ptrs;
+  small_vec<std::pair<function_task*, int>, 3> output_vals;
+  small_vec<std::pair<function_task*, int>, 3> output_refs;
   std::any result;
 
   int decrement_ref_count() {
@@ -30,38 +32,62 @@ public:
   int ref_count() { return _ref_count.load(std::memory_order_acquire); }
 
   explicit function_task(std::optional<any_value_function> func, int num_inputs)
-      : _ref_count(num_inputs), func(std::move(func)), inputs(num_inputs) {}
+      : _ref_count(num_inputs), func(std::move(func)), input_vals(num_inputs),
+        input_ptrs(num_inputs) {}
 };
 
 inline void propogate_outputs(function_task& task,
                               small_vec<function_task*, 3>& tasks_to_run) {
-  assert(task.result.has_value());
+  assert(task.result.has_value() || task.func->output_type() == typeid(void));
 
-  if(task.outputs.size() == 0)
-    return;
-
-  auto propogate = [](const auto& pair, std::any result,
-                      small_vec<function_task*, 3>& tasks_to_run) {
+  auto propogate_ref = [](const auto& pair, std::any& result,
+                          small_vec<function_task*, 3>& tasks_to_run) {
     function_task* child_task = pair.first;
-    child_task->inputs[pair.second] = std::move(result);
+    child_task->input_ptrs[pair.second] = &result;
 
     if(child_task->decrement_ref_count() == 0) {
       tasks_to_run.push_back(child_task);
     }
   };
 
-  // Copy indices 1..n-1
-  std::for_each(
-      task.outputs.begin() + 1, task.outputs.end(),
-      [&](const auto& pair) { propogate(pair, task.result, tasks_to_run); });
+  auto propogate_val = [](const auto& pair, std::any result,
+                          small_vec<function_task*, 3>& tasks_to_run) {
+    function_task* child_task = pair.first;
+    child_task->input_vals[pair.second] = std::move(result);
+    child_task->input_ptrs[pair.second] = &child_task->input_vals[pair.second];
 
-  // Move index 0
-  propogate(task.outputs.front(), std::move(task.result), tasks_to_run);
+    if(child_task->decrement_ref_count() == 0) {
+      tasks_to_run.push_back(child_task);
+    }
+  };
+
+  std::for_each(task.output_refs.begin(), task.output_refs.end(),
+                [&](const auto& pair) {
+                  propogate_ref(pair, task.result, tasks_to_run);
+                });
+
+  if(task.output_refs.size() != 0) {
+    // Copy all indices
+    std::for_each(task.output_vals.begin(), task.output_vals.end(),
+                  [&](const auto& pair) {
+                    propogate_val(pair, task.result, tasks_to_run);
+                  });
+  } else if(task.output_vals.size() != 0) {
+    // Copy indices 1..n-1
+    std::for_each(task.output_vals.begin() + 1, task.output_vals.end(),
+                  [&](const auto& pair) {
+                    propogate_val(pair, task.result, tasks_to_run);
+                  });
+
+    // Move index 0
+    propogate_val(task.output_vals.front(), std::move(task.result),
+                  tasks_to_run);
+  }
 }
 
 template <typename Executor, typename TaskGroupId>
 void execute_task(Executor& executor, function_task& task, TaskGroupId id) {
-  task.result = task.func->invoke(std::move(task.inputs));
+  task.result = task.func->invoke(std::move(task.input_ptrs));
 
   small_vec<function_task*, 3> tasks_to_run;
 
@@ -79,7 +105,7 @@ Output execute_graph(const function_graph<Output, std::decay_t<Inputs>...>& g,
   std::vector<std::unique_ptr<function_task>> tasks;
   tasks.reserve(g.nodes().size());
 
-  auto input_vec = util::make_vector<any_value_function::vec_type>(
+  auto input_vec = util::make_vector<any_value_function::vec_val_type>(
       std::forward<Inputs>(inputs)...);
   int parameter_index = 0;
 
@@ -108,14 +134,19 @@ Output execute_graph(const function_graph<Output, std::decay_t<Inputs>...>& g,
   // Connect outputs
   for(int i = 0; i < static_cast<int>(g.nodes().size()); ++i) {
     for(const auto& output_pair : g.outputs(i)) {
-      tasks[i]->outputs.emplace_back(tasks[output_pair.first].get(),
-                                     output_pair.second);
+      if(tasks[output_pair.first]->func->input_crefs()[output_pair.second]) {
+        tasks[i]->output_refs.emplace_back(tasks[output_pair.first].get(),
+                                           output_pair.second);
+      } else {
+        tasks[i]->output_vals.emplace_back(tasks[output_pair.first].get(),
+                                           output_pair.second);
+      }
     }
   }
 
   // Create task to hold result and connect it
   function_task result_task(std::nullopt, 2);
-  tasks[g.graph_output()]->outputs.emplace_back(&result_task, 0);
+  tasks[g.graph_output()]->output_vals.emplace_back(&result_task, 0);
 
   small_vec<function_task*, 3> tasks_to_run;
 
@@ -149,7 +180,7 @@ Output execute_graph(const function_graph<Output, std::decay_t<Inputs>...>& g,
 
   executor.wait_for_task_group(task_group_id);
 
-  return std::any_cast<Output>(std::move(result_task.inputs[0]));
+  return std::any_cast<Output>(std::move(result_task.input_vals[0]));
 }
 
 } // namespace anyf

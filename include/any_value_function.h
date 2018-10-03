@@ -26,9 +26,10 @@ class any_value_function {
   constexpr static int SMALL_VEC_SIZE = 3;
 
 public:
-  using vec_type = small_vec<std::any, SMALL_VEC_SIZE>;
+  using vec_val_type = small_vec<std::any, SMALL_VEC_SIZE>;
+  using vec_ptr_type = small_vec<std::any*, SMALL_VEC_SIZE>;
 
-  std::any invoke(small_vec<std::any, 3>&& inputs) const {
+  std::any invoke(vec_ptr_type inputs) const {
     return _func(std::move(inputs));
   }
 
@@ -37,17 +38,22 @@ public:
   }
   std::type_index output_type() const { return _output_type; }
 
+  const small_vec_base<bool>& input_crefs() const { return _is_cref; }
+
 private:
-  std::function<std::any(vec_type&&)> _func;
+  std::function<std::any(vec_ptr_type)> _func;
 
   small_vec<std::type_index, SMALL_VEC_SIZE> _input_types;
   std::type_index _output_type;
 
+  small_vec<bool, SMALL_VEC_SIZE> _is_cref;
+
   explicit any_value_function(
-      std::function<std::any(vec_type&&)> func, std::type_index output_type,
-      small_vec<std::type_index, SMALL_VEC_SIZE> input_types)
+      std::function<std::any(vec_ptr_type)> func, std::type_index output_type,
+      small_vec<std::type_index, SMALL_VEC_SIZE> input_types,
+      small_vec<bool, SMALL_VEC_SIZE> is_cref)
       : _func(std::move(func)), _input_types(std::move(input_types)),
-        _output_type(output_type) {}
+        _output_type(output_type), _is_cref(is_cref) {}
 
   template <typename F>
   friend any_value_function make_any_value_function(F f);
@@ -74,13 +80,14 @@ small_vec<std::type_index, 3> make_types() {
 }
 
 template <typename Return, typename Types, typename F, std::size_t... Is>
-Return call_with_any_values_vec(F f, small_vec<std::any, 3>&& inputs,
-                                std::index_sequence<Is...>) {
+Return call_with_any_vec(F f, any_value_function::vec_ptr_type inputs,
+                         std::index_sequence<Is...>) {
   if constexpr(std::is_same_v<void, Return>) {
-    f(std::any_cast<std::tuple_element_t<Is, Types>>(std::move(inputs[Is]))...);
+    f(std::any_cast<std::tuple_element_t<Is, Types>>(
+        std::move(*inputs[Is]))...);
   } else {
     return f(std::any_cast<std::tuple_element_t<Is, Types>>(
-        std::move(inputs[Is]))...);
+        std::move(*inputs[Is]))...);
   }
 }
 } // namespace details
@@ -94,29 +101,33 @@ any_value_function make_any_value_function(F f) {
   constexpr bool legal_return =
       std::is_same_v<void, ret_type> || traits::is_decayed_v<ret_type>;
 
-  constexpr bool legal_args = traits::tuple_all_of_v<traits::is_decayed, args>;
+  constexpr bool legal_args =
+      traits::tuple_all_of_v<traits::is_decayed_or_cref, args>;
 
   if constexpr(legal_return && legal_args) {
-    auto&& func = [f = std::move(f)](small_vec<std::any, 3>&& inputs) {
+    auto&& func = [f = std::move(f)](any_value_function::vec_ptr_type inputs) {
       if constexpr(std::is_same_v<void, ret_type>) {
-        details::call_with_any_values_vec<ret_type, args>(
+        details::call_with_any_vec<ret_type, args>(
             std::move(f), std::move(inputs),
             std::make_index_sequence<f_traits::arity>());
         return std::any();
       } else {
-        return std::any(details::call_with_any_values_vec<ret_type, args>(
+        return std::any(details::call_with_any_vec<ret_type, args>(
             std::move(f), std::move(inputs),
             std::make_index_sequence<f_traits::arity>()));
       }
     };
 
-    return any_value_function(std::move(func),
-                              std::type_index(typeid(ret_type)),
-                              details::make_types<args>());
+    return any_value_function(
+        std::move(func), std::type_index(typeid(ret_type)),
+        details::make_types<args>(),
+        util::tuple_type_extraction<std::is_reference, args,
+                                    small_vec<bool, 3>>());
   } else {
-    static_assert(legal_return, "Return type must be decayed or void");
+    static_assert(legal_return,
+                  "Function return type must be a value or void.");
     static_assert(legal_args,
-                  "Args must be all be values (no const refs, refs, etc)");
+                  "Function arguments must either be values on const refs.");
     throw;
   }
 }
