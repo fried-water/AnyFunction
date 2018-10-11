@@ -91,20 +91,20 @@ auto create_graph() {
       .add(sum, "sum5", {"sum1", "sum2"})
       .add(sum, "sum6", {"sum3", "sum4"})
       .add(sum, "final_sum", {"sum5", "sum6"})
-      .output<int>(("final_sum"));
+      .output<int>("final_sum");
 }
 
 template <typename Graph>
 void execute_graph_with_threads(Graph g) {
   int size = 100'000;
-  int max_threads = 2;
+  int max_threads = 4;
 
   for(int num_threads = 1; num_threads <= max_threads; num_threads++) {
     TaskSystem task_system(num_threads);
 
-    auto decorated_graph = g
+    auto decorated_graph = g;
                                // .decorate(timing_decorator)
-                               .decorate(print_decorator);
+                               // .decorate(print_decorator);
 
     auto t0 = std::chrono::steady_clock::now();
     std::cout << "--------- " << num_threads << " THREADS --------\n";
@@ -117,31 +117,57 @@ void execute_graph_with_threads(Graph g) {
   }
 }
 
-void take_ref(const Sentinal& sen) {
-  std::cout << "Ref " << sen.copies << " " << sen.moves << "\n";
+
+
+struct SentinalDestructor {
+  bool valid = true;
+
+  SentinalDestructor() {}
+
+  ~SentinalDestructor() {
+    if(valid) {
+      std::cout << "Destruct--------------------------------\n";
+    }
+  }
+
+  SentinalDestructor(const SentinalDestructor& other) :
+    valid(other.valid) { }
+
+  SentinalDestructor(SentinalDestructor&& other) :
+    valid(other.valid) {
+      other.valid = false;
+    }
+
+};
+
+auto take(int i) {
+  return [i](Sentinal sent) {
+    std::cout << "Take" << i << " " << sent.copies << " " << sent.moves << "\n";
+  };
 }
 
-void take_val(Sentinal sen) {
-  std::cout << "Val " << sen.copies << " " << sen.moves << "\n";
+void take_ref(const Sentinal& sent) {
+  std::cout << "Ref " << " " << sent.copies << " " << sent.moves << "\n";
 }
 
-void test_ref_graph() {
-  auto g = make_graph<Sentinal>({"in"})
-               .add(take_ref, "ref", {".in"})
-               .add(take_val, "val", {".in"})
-               .output<Sentinal>((".in"));
+void test_graph() {
+  auto g = make_graph<Sentinal, Sentinal>({"in1", "in2"})
+               .add(take(1), "val", {".in1"}, {pass_by::copy})
+               .add(take(2), "val2", {".in1"}, {pass_by::move})
+               .add(take(3), "val3", {".in2"}, {pass_by::move})
+               .add(take_ref, "ref", {".in2"}, {pass_by::ref})
+               .output<Sentinal>(".in2");
 
   TaskSystem task_system(1);
-  Sentinal result = execute_graph(g, task_system, Sentinal());
-
-  std::cout << "Res " << result.copies << " " << result.moves << "\n";
+  Sentinal x = execute_graph(g, task_system, Sentinal(), Sentinal());
+  std::cout << "Result " << " " << x.copies << " " << x.moves << "\n";
 }
 
 } // namespace
 
 int main() {
   execute_graph_with_threads(create_graph());
-  test_ref_graph();
+  test_graph();
   any_function_test();
   // stress_test();
 

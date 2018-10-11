@@ -80,7 +80,7 @@ class TaskSystem {
 
   void run(unsigned i) {
     while(true) {
-      unsigned spin_count = std::max<unsigned>(16, _count);
+      unsigned spin_count = std::max<unsigned>(64, _count);
       for(unsigned n = 0; n < spin_count; n++) {
         auto tuple = _q[(i + n) % _count].try_pop();
         if(tuple) {
@@ -140,11 +140,10 @@ public:
     auto i = _index++;
     _group_task_counts[task_group].fetch_add(1, std::memory_order_relaxed);
 
-    for(unsigned n = 0; n < _count; n++) {
-      if(_q[(i + n) % _count].try_push(task_group, std::forward<F>(f)))
-        return;
+    const int K = 5;
+    for(unsigned n = 0; n < _count * K; n++) {
+      if(_q[(i + n) % _count].try_push(task_group, std::forward<F>(f))) return;
     }
-
     _q[i % _count].push(task_group, std::forward<F>(f));
   }
 

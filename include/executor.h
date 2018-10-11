@@ -12,22 +12,51 @@
 
 namespace anyf {
 
+class alignas(128) function_task;
+
+struct parameter_location {
+  explicit parameter_location(function_task* task, int index) :
+    task(task), index(index) {}
+  function_task* task;
+  int index;
+};
+
+struct ref_cleanup {
+  ref_cleanup(int count, std::any& src, std::optional<parameter_location> dst) : ref_count(count), src(src), dst(dst) {}
+
+  std::atomic<int> ref_count;
+  std::any& src;
+  std::optional<parameter_location> dst;
+};
+
 class alignas(128) function_task {
   std::atomic<int> _ref_count;
 
 public:
   std::optional<any_value_function> func;
-  small_vec<std::any, 3> input_vals;
-  small_vec<std::any*, 3> input_ptrs;
-  small_vec<std::pair<function_task*, int>, 3> output_vals;
-  small_vec<std::pair<function_task*, int>, 3> output_refs;
+  
+  // Stores the values of the inputs for copy/move parameters
+  small_vec3<std::any> input_vals;
+
+  // Points to the location of the inputs, input_vals for copies/moves
+  // input_task.result for refs
+  small_vec3<std::any*> input_ptrs;
+
+  // Buffer to hold the result of the function
   std::any result;
+
+  // Information on where to send the output
+  std::optional<parameter_location> output_move;
+  small_vec3<parameter_location> output_copies;
+  small_vec3<parameter_location> output_refs;
+
+  // Clean up any references to data we used
+  small_vec3<std::shared_ptr<ref_cleanup>> ref_forwards;
+  
 
   int decrement_ref_count() {
     return _ref_count.fetch_sub(1, std::memory_order_release) - 1;
   }
-
-  void set_ref_count(int x) { _ref_count.store(x, std::memory_order_release); }
 
   int ref_count() { return _ref_count.load(std::memory_order_acquire); }
 
@@ -37,50 +66,53 @@ public:
 };
 
 inline void propogate_outputs(function_task& task,
-                              small_vec<function_task*, 3>& tasks_to_run) {
+                              small_vec3<function_task*>& tasks_to_run) {
   assert(task.result.has_value() || task.func->output_type() == typeid(void));
 
-  auto propogate_ref = [](const auto& pair, std::any& result,
-                          small_vec<function_task*, 3>& tasks_to_run) {
-    function_task* child_task = pair.first;
-    child_task->input_ptrs[pair.second] = &result;
+  auto propogate_ref = [](const parameter_location& loc, std::any& result,
+                          small_vec3<function_task*>& tasks_to_run) {
+    loc.task->input_ptrs[loc.index] = &result;
 
-    if(child_task->decrement_ref_count() == 0) {
-      tasks_to_run.push_back(child_task);
+    if(loc.task->decrement_ref_count() == 0) {
+      tasks_to_run.push_back(loc.task);
     }
   };
 
-  auto propogate_val = [](const auto& pair, std::any result,
-                          small_vec<function_task*, 3>& tasks_to_run) {
-    function_task* child_task = pair.first;
-    child_task->input_vals[pair.second] = std::move(result);
-    child_task->input_ptrs[pair.second] = &child_task->input_vals[pair.second];
+  auto propogate_val = [](const parameter_location& loc, std::any result,
+                          small_vec3<function_task*>& tasks_to_run) {
+    loc.task->input_vals[loc.index] = std::move(result);
+    loc.task->input_ptrs[loc.index] = &loc.task->input_vals[loc.index];
 
-    if(child_task->decrement_ref_count() == 0) {
-      tasks_to_run.push_back(child_task);
+    if(loc.task->decrement_ref_count() == 0) {
+      tasks_to_run.push_back(loc.task);
     }
   };
 
-  std::for_each(task.output_refs.begin(), task.output_refs.end(),
-                [&](const auto& pair) {
-                  propogate_ref(pair, task.result, tasks_to_run);
+  // Copy all indices
+  boost::for_each(task.output_copies,
+                [&](const auto& loc) {
+                  propogate_val(loc, task.result, tasks_to_run);
                 });
 
-  if(task.output_refs.size() != 0) {
-    // Copy all indices
-    std::for_each(task.output_vals.begin(), task.output_vals.end(),
-                  [&](const auto& pair) {
-                    propogate_val(pair, task.result, tasks_to_run);
-                  });
-  } else if(task.output_vals.size() != 0) {
-    // Copy indices 1..n-1
-    std::for_each(task.output_vals.begin() + 1, task.output_vals.end(),
-                  [&](const auto& pair) {
-                    propogate_val(pair, task.result, tasks_to_run);
-                  });
+  // Set up refs
+  boost::for_each(task.output_refs,
+                [&](const auto& loc) {
+                  propogate_ref(loc, task.result, tasks_to_run);
+                });
 
-    // Move index 0
-    propogate_val(task.output_vals.front(), std::move(task.result),
+  // If the output is taken by ref, set up data to properly clean up/forward the value
+  if(task.output_refs.size() != 0) {
+    // Give reference tasks information to clean up the value
+    auto ref_cleanup_data = std::make_shared<ref_cleanup>(task.output_refs.size(), task.result, task.output_move);
+    
+    // Add ref cleanup
+    boost::for_each(task.output_refs,
+                [&ref_cleanup_data](const auto& loc) {
+                  loc.task->ref_forwards.push_back(ref_cleanup_data);
+                });
+  // If output is not taken by ref and is supposed to be moved do it now
+  } else if(task.output_move) {
+    propogate_val(*task.output_move, std::move(task.result),
                   tasks_to_run);
   }
 }
@@ -89,9 +121,29 @@ template <typename Executor, typename TaskGroupId>
 void execute_task(Executor& executor, function_task& task, TaskGroupId id) {
   task.result = task.func->invoke(std::move(task.input_ptrs));
 
-  small_vec<function_task*, 3> tasks_to_run;
+  small_vec3<function_task*> tasks_to_run;
 
   propogate_outputs(task, tasks_to_run);
+
+  // If we took anything by reference we potentially have to clean up the value or move
+  // it to its final destination
+  boost::for_each(task.ref_forwards, [&tasks_to_run](std::shared_ptr<ref_cleanup>& cleanup) {
+    if(cleanup->ref_count.fetch_sub(1, std::memory_order_release) - 1 == 0) {
+      if(cleanup->dst) {
+        parameter_location dst = *cleanup->dst;
+
+        dst.task->input_vals[dst.index] = std::move(cleanup->src);
+        dst.task->input_ptrs[dst.index] = &dst.task->input_vals[dst.index];
+
+        if(dst.task->decrement_ref_count() == 0) {
+          tasks_to_run.push_back(dst.task);
+        }
+
+      } else {
+        cleanup->src.reset();
+      }
+    }
+  });
 
   boost::for_each(tasks_to_run, [&executor, id](function_task* task) {
     executor.async(
@@ -115,7 +167,7 @@ Output execute_graph(const function_graph<Output, std::decay_t<Inputs>...>& g,
         return std::visit(
             [&](const auto& arg) {
               using T = std::decay_t<decltype(arg)>;
-              if constexpr(std::is_same_v<T, Source>) {
+              if constexpr(std::is_same_v<T, graph_source>) {
                 auto task = std::make_unique<function_task>(std::nullopt, 1);
                 task->result = std::move(input_vec[parameter_index]);
                 parameter_index++;
@@ -123,7 +175,7 @@ Output execute_graph(const function_graph<Output, std::decay_t<Inputs>...>& g,
                 return task;
               } else {
                 return std::make_unique<function_task>(
-                    std::get<InternalNode>(variant).func, arg.inputs.size());
+                    std::get<graph_node>(variant).func, arg.inputs.size());
               }
             },
             variant);
@@ -133,22 +185,30 @@ Output execute_graph(const function_graph<Output, std::decay_t<Inputs>...>& g,
 
   // Connect outputs
   for(int i = 0; i < static_cast<int>(g.nodes().size()); ++i) {
-    for(const auto& output_pair : g.outputs(i)) {
-      if(tasks[output_pair.first]->func->input_crefs()[output_pair.second]) {
-        tasks[i]->output_refs.emplace_back(tasks[output_pair.first].get(),
-                                           output_pair.second);
+    for(data_edge edge : g.outputs(i)) {
+
+      if(edge.pb == pass_by::ref) {
+        tasks[i]->output_refs.emplace_back(tasks[edge.dst_id].get(),
+                                           edge.arg_idx);
+      } else if(edge.pb == pass_by::copy) {
+        tasks[i]->output_copies.emplace_back(tasks[edge.dst_id].get(),
+                                           edge.arg_idx);
       } else {
-        tasks[i]->output_vals.emplace_back(tasks[output_pair.first].get(),
-                                           output_pair.second);
+        tasks[i]->output_move.emplace(tasks[edge.dst_id].get(), edge.arg_idx);
       }
     }
   }
 
   // Create task to hold result and connect it
   function_task result_task(std::nullopt, 2);
-  tasks[g.graph_output()]->output_vals.emplace_back(&result_task, 0);
+  if(g.graph_output().pb == pass_by::copy) {
+    tasks[g.graph_output().dst_id]->output_copies.emplace_back(&result_task, 0);
+  } else {
+    tasks[g.graph_output().dst_id]->output_move.emplace(&result_task, 0);
+  }
+  
 
-  small_vec<function_task*, 3> tasks_to_run;
+  small_vec3<function_task*> tasks_to_run;
 
   // Launch 0 input tasks
   boost::for_each(tasks, [&tasks_to_run](auto& task) {
@@ -163,7 +223,7 @@ Output execute_graph(const function_graph<Output, std::decay_t<Inputs>...>& g,
                     const auto& variant = boost::get<0>(tuple);
                     function_task& task = *boost::get<1>(tuple);
 
-                    if(std::holds_alternative<Source>(variant)) {
+                    if(std::holds_alternative<graph_source>(variant)) {
                       propogate_outputs(task, tasks_to_run);
                     }
                   });
