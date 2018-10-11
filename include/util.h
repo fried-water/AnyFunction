@@ -13,7 +13,6 @@ namespace anyf {
 template <typename T, std::size_t N>
 using small_vec = boost::container::small_vector<T, N>;
 
-
 template <typename T>
 using small_vec3 = boost::container::small_vector<T, 3>;
 

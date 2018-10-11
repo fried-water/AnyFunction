@@ -142,7 +142,8 @@ public:
 
     const int K = 5;
     for(unsigned n = 0; n < _count * K; n++) {
-      if(_q[(i + n) % _count].try_push(task_group, std::forward<F>(f))) return;
+      if(_q[(i + n) % _count].try_push(task_group, std::forward<F>(f)))
+        return;
     }
     _q[i % _count].push(task_group, std::forward<F>(f));
   }

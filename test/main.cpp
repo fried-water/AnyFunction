@@ -103,8 +103,8 @@ void execute_graph_with_threads(Graph g) {
     TaskSystem task_system(num_threads);
 
     auto decorated_graph = g;
-                               // .decorate(timing_decorator)
-                               // .decorate(print_decorator);
+    // .decorate(timing_decorator)
+    // .decorate(print_decorator);
 
     auto t0 = std::chrono::steady_clock::now();
     std::cout << "--------- " << num_threads << " THREADS --------\n";
@@ -117,8 +117,6 @@ void execute_graph_with_threads(Graph g) {
   }
 }
 
-
-
 struct SentinalDestructor {
   bool valid = true;
 
@@ -130,14 +128,11 @@ struct SentinalDestructor {
     }
   }
 
-  SentinalDestructor(const SentinalDestructor& other) :
-    valid(other.valid) { }
+  SentinalDestructor(const SentinalDestructor& other) : valid(other.valid) {}
 
-  SentinalDestructor(SentinalDestructor&& other) :
-    valid(other.valid) {
-      other.valid = false;
-    }
-
+  SentinalDestructor(SentinalDestructor&& other) : valid(other.valid) {
+    other.valid = false;
+  }
 };
 
 auto take(int i) {
@@ -147,7 +142,8 @@ auto take(int i) {
 }
 
 void take_ref(const Sentinal& sent) {
-  std::cout << "Ref " << " " << sent.copies << " " << sent.moves << "\n";
+  std::cout << "Ref "
+            << " " << sent.copies << " " << sent.moves << "\n";
 }
 
 void test_graph() {
@@ -160,7 +156,8 @@ void test_graph() {
 
   TaskSystem task_system(1);
   Sentinal x = execute_graph(g, task_system, Sentinal(), Sentinal());
-  std::cout << "Result " << " " << x.copies << " " << x.moves << "\n";
+  std::cout << "Result "
+            << " " << x.copies << " " << x.moves << "\n";
 }
 
 } // namespace

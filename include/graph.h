@@ -30,8 +30,8 @@ struct data_edge {
   int arg_idx;
   pass_by pb;
 
-  data_edge(int dst_id, int arg_idx, pass_by pb) :
-    dst_id(dst_id), arg_idx(arg_idx), pb(pb) { }
+  data_edge(int dst_id, int arg_idx, pass_by pb)
+      : dst_id(dst_id), arg_idx(arg_idx), pb(pb) {}
 };
 
 struct graph_source {
@@ -57,9 +57,7 @@ public:
   data_edge graph_output() const { return _graph_output; }
   const std::vector<NodeVariant>& nodes() const { return _nodes; }
   const std::vector<std::string>& names() const { return _names; }
-  const small_vec_base<data_edge>& outputs(int i) const {
-    return _outputs[i];
-  }
+  const small_vec_base<data_edge>& outputs(int i) const { return _outputs[i]; }
 
   function_graph<Output, Inputs...> decorate(
       std::function<std::function<std::any(any_value_function::vec_ptr_type&&)>(
@@ -76,9 +74,8 @@ public:
         const auto& input_types = node.func.input_types();
         const auto& input_crefs = node.func.input_crefs();
         small_vec3<std::type_index> new_input_types(input_types.begin(),
-                                                      input_types.end());
-        small_vec3<bool> new_pass_bys(input_crefs.begin(),
-                                          input_crefs.end());
+                                                    input_types.end());
+        small_vec3<bool> new_pass_bys(input_crefs.begin(), input_crefs.end());
         nodes.emplace_back(graph_node(
             any_value_function(
                 decorator(_names[i], node.func), node.func.output_type(),
@@ -116,19 +113,20 @@ class constructing_graph {
 public:
   template <typename F>
   constructing_graph& add(F f, std::string name,
-                          small_vec3<std::string> inputs = {}, small_vec3<pass_by> pass_bys = {}) {
+                          small_vec3<std::string> inputs = {},
+                          small_vec3<pass_by> pass_bys = {}) {
 
     if(!name_valid(name)) {
       std::cout << "Invalid name: " << name << "\n";
       assert(false);
     }
 
-    return add_internal(make_any_value_function(std::move(f)), std::move(name),
-                        util::map<small_vec3<int>>(
-                            inputs, [this](const std::string_view& name) {
-                              return idx_of(name);
-                            }),
-                        std::move(pass_bys));
+    return add_internal(
+        make_any_value_function(std::move(f)), std::move(name),
+        util::map<small_vec3<int>>(
+            inputs,
+            [this](const std::string_view& name) { return idx_of(name); }),
+        std::move(pass_bys));
   }
 
   template <typename Output, typename... InnerInputs>
@@ -148,28 +146,31 @@ public:
         for(int j = 0; j < i; j++) {
           for(const data_edge& edge : graph.outputs(j)) {
             if(edge.dst_id == i) {
-              pass_bys[edge.arg_idx] = 
+              pass_bys[edge.arg_idx] =
                   std::holds_alternative<graph_source>(graph.nodes()[j])
-                ? pass_by::def // TODO use passed in value
-                : edge.pb;
+                      ? pass_by::def // TODO use passed in value
+                      : edge.pb;
             }
           }
         }
 
-        add_internal(
-            node.func, name + "." + inner_name,
-            util::map<small_vec3<int>>(node.inputs, [&](int old_input) {
-              if(old_input < static_cast<int>(sizeof...(InnerInputs))) {
-                return idx_of(inputs[old_input]);
-              } else {
-                return old_input + index_offset;
-              }
-            }), 
-            std::move(pass_bys));
+        add_internal(node.func, name + "." + inner_name,
+                     util::map<small_vec3<int>>(
+                         node.inputs,
+                         [&](int old_input) {
+                           if(old_input <
+                              static_cast<int>(sizeof...(InnerInputs))) {
+                             return idx_of(inputs[old_input]);
+                           } else {
+                             return old_input + index_offset;
+                           }
+                         }),
+                     std::move(pass_bys));
       }
     }
 
-    _aliases.emplace(std::move(name), graph.graph_output().dst_id + index_offset);
+    _aliases.emplace(std::move(name),
+                     graph.graph_output().dst_id + index_offset);
 
     return *this;
   }
@@ -215,9 +216,11 @@ private:
   }
 
   bool name_valid(const std::string_view& name) const {
-    if(name.size() == 0 || !std::isalpha(name.front())) return false;
+    if(name.size() == 0 || !std::isalpha(name.front()))
+      return false;
 
-    return std::all_of(name.begin(), name.end(), [](char c){ return std::isalnum(c) || c == '_'; });
+    return std::all_of(name.begin(), name.end(),
+                       [](char c) { return std::isalnum(c) || c == '_'; });
   }
 
   int idx_of(const std::string_view& name) const {
@@ -267,7 +270,7 @@ private:
       }
 
       // Make the rest of the defaults copies
-      boost::for_each(outputs, [](data_edge& edge){
+      boost::for_each(outputs, [](data_edge& edge) {
         if(edge.pb == pass_by::def) {
           edge.pb = pass_by::copy;
         }
@@ -276,7 +279,8 @@ private:
   }
 
   constructing_graph& add_internal(any_value_function f, std::string name,
-                                   small_vec3<int> inputs, small_vec3<pass_by> pass_bys) {
+                                   small_vec3<int> inputs,
+                                   small_vec3<pass_by> pass_bys) {
     assert(!name_exists(name));
     assert(f.input_types().size() == inputs.size());
     assert(pass_bys.size() == 0 || pass_bys.size() == inputs.size());
@@ -286,18 +290,18 @@ private:
     }
 
     // Check if moved inputs have been moved already
-    boost::for_each(boost::combine(pass_bys, inputs), [this](const auto& tuple) {
-      auto pb = boost::get<0>(tuple);
-      int input_idx = boost::get<1>(tuple);
+    boost::for_each(
+        boost::combine(pass_bys, inputs), [this](const auto& tuple) {
+          auto pb = boost::get<0>(tuple);
+          int input_idx = boost::get<1>(tuple);
 
-      if(pb == pass_by::move) {
-        assert(_moved_outputs.find(input_idx) == _moved_outputs.end());
-        _moved_outputs.insert(input_idx);
-      }
-    });
+          if(pb == pass_by::move) {
+            assert(_moved_outputs.find(input_idx) == _moved_outputs.end());
+            _moved_outputs.insert(input_idx);
+          }
+        });
 
-    auto node =
-        graph_node(std::move(f), std::move(inputs));
+    auto node = graph_node(std::move(f), std::move(inputs));
 
     for(int i = 0; i < static_cast<int>(node.inputs.size()); i++) {
       auto output_type = get_type(node.inputs[i]);
@@ -326,10 +330,12 @@ private:
       return edge.pb == pass_by::move;
     });
 
-    pass_by output_pb = it == _outputs[idx].end() ? pass_by::move : pass_by::copy;
+    pass_by output_pb =
+        it == _outputs[idx].end() ? pass_by::move : pass_by::copy;
 
     return function_graph<Output, Inputs...>(
-        std::move(_nodes), std::move(_names), std::move(_outputs), data_edge(idx, 0, output_pb));
+        std::move(_nodes), std::move(_names), std::move(_outputs),
+        data_edge(idx, 0, output_pb));
   }
 
   template <typename... Ts>
