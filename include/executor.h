@@ -34,7 +34,7 @@ class alignas(128) function_task {
   std::atomic<int> _ref_count;
 
 public:
-  std::optional<any_value_function> func;
+  std::optional<any_function> func;
 
   // Stores the values of the inputs for copy/move parameters
   small_vec3<std::any> input_vals;
@@ -60,7 +60,7 @@ public:
 
   int ref_count() { return _ref_count.load(std::memory_order_acquire); }
 
-  explicit function_task(std::optional<any_value_function> func, int num_inputs)
+  explicit function_task(std::optional<any_function> func, int num_inputs)
       : _ref_count(num_inputs), func(std::move(func)), input_vals(num_inputs),
         input_ptrs(num_inputs) {}
 };
@@ -158,7 +158,7 @@ Output execute_graph(const function_graph<Output, std::decay_t<Inputs>...>& g,
   std::vector<std::unique_ptr<function_task>> tasks;
   tasks.reserve(g.nodes().size());
 
-  auto input_vec = util::make_vector<any_value_function::vec_val_type>(
+  auto input_vec = util::make_vector<any_function::vec_val_type>(
       std::forward<Inputs>(inputs)...);
   int parameter_index = 0;
 
@@ -168,15 +168,17 @@ Output execute_graph(const function_graph<Output, std::decay_t<Inputs>...>& g,
         return std::visit(
             [&](const auto& arg) {
               using T = std::decay_t<decltype(arg)>;
-              if constexpr(std::is_same_v<T, graph_source>) {
+              if constexpr(std::is_same_v<T, graph::source>) {
                 auto task = std::make_unique<function_task>(std::nullopt, 1);
                 task->result = std::move(input_vec[parameter_index]);
                 parameter_index++;
 
                 return task;
-              } else {
+              } else if constexpr(std::is_same_v<T, graph::node>) {
                 return std::make_unique<function_task>(
-                    std::get<graph_node>(variant).func, arg.inputs.size());
+                    std::get<graph::node>(variant).func, arg.inputs.size());
+              } else {
+                return std::make_unique<function_task>(std::nullopt, 2);
               }
             },
             variant);
@@ -185,9 +187,8 @@ Output execute_graph(const function_graph<Output, std::decay_t<Inputs>...>& g,
   assert(tasks.size() == g.nodes().size());
 
   // Connect outputs
-  for(int i = 0; i < static_cast<int>(g.nodes().size()); ++i) {
-    for(data_edge edge : g.outputs(i)) {
-
+  for(int i = 0; i < static_cast<int>(g.nodes().size() - 1); ++i) {
+    for(graph::edge edge : g.outputs(i)) {
       if(edge.pb == pass_by::ref) {
         tasks[i]->output_refs.emplace_back(tasks[edge.dst_id].get(),
                                            edge.arg_idx);
@@ -200,17 +201,9 @@ Output execute_graph(const function_graph<Output, std::decay_t<Inputs>...>& g,
     }
   }
 
-  // Create task to hold result and connect it
-  function_task result_task(std::nullopt, 2);
-  if(g.graph_output().pb == pass_by::copy) {
-    tasks[g.graph_output().dst_id]->output_copies.emplace_back(&result_task, 0);
-  } else {
-    tasks[g.graph_output().dst_id]->output_move.emplace(&result_task, 0);
-  }
-
   small_vec3<function_task*> tasks_to_run;
 
-  // Launch 0 input tasks
+  // Add 0 input tasks
   boost::for_each(tasks, [&tasks_to_run](auto& task) {
     if(task->ref_count() == 0) {
       tasks_to_run.push_back(task.get());
@@ -223,7 +216,7 @@ Output execute_graph(const function_graph<Output, std::decay_t<Inputs>...>& g,
                     const auto& variant = boost::get<0>(tuple);
                     function_task& task = *boost::get<1>(tuple);
 
-                    if(std::holds_alternative<graph_source>(variant)) {
+                    if(std::holds_alternative<graph::source>(variant)) {
                       propogate_outputs(task, tasks_to_run);
                     }
                   });
@@ -240,7 +233,7 @@ Output execute_graph(const function_graph<Output, std::decay_t<Inputs>...>& g,
 
   executor.wait_for_task_group(task_group_id);
 
-  return std::any_cast<Output>(std::move(result_task.input_vals[0]));
+  return std::any_cast<Output>(std::move(tasks.back()->input_vals[0]));
 }
 
 } // namespace anyf

@@ -40,31 +40,31 @@ std::vector<int> sort_vector(std::vector<int> vec) {
 
 int sum(int x, int y) { return x + y; }
 
-auto timing_decorator(std::string name, any_value_function func) {
-  return std::function<std::any(any_value_function::vec_ptr_type &&)>(
-      [name = std::move(name),
-       func = std::move(func)](any_value_function::vec_ptr_type&& inputs) {
-        auto t0 = std::chrono::steady_clock::now();
-        std::any result = func.invoke(std::move(inputs));
-        auto t1 = std::chrono::steady_clock::now();
+any_function::func_type timing_decorator(std::string name,
+                                         any_function::func_type func) {
 
-        std::cout << name << " took "
-                  << std::chrono::duration_cast<std::chrono::microseconds>(t1 -
-                                                                           t0)
-                         .count()
-                  << "us\n";
+  return [name = std::move(name),
+          func = std::move(func)](any_function::vec_ptr_type inputs) {
+    auto t0 = std::chrono::steady_clock::now();
+    std::any result = func(std::move(inputs));
+    auto t1 = std::chrono::steady_clock::now();
 
-        return result;
-      });
+    std::cout << name << " took "
+              << std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0)
+                     .count()
+              << "us\n";
+
+    return result;
+  };
 }
 
-auto print_decorator(std::string name, any_value_function func) {
-  return std::function<std::any(any_value_function::vec_ptr_type &&)>(
-      [name = std::move(name),
-       func = std::move(func)](any_value_function::vec_ptr_type&& inputs) {
-        std::cout << "Running " << name << "\n";
-        return func.invoke(std::move(inputs));
-      });
+any_function::func_type print_decorator(std::string name,
+                                        any_function::func_type func) {
+  return [name = std::move(name),
+          func = std::move(func)](any_function::vec_ptr_type inputs) {
+    std::cout << "Running " << name << "\n";
+    return func(std::move(inputs));
+  };
 }
 
 auto create_pipeline(int seed, int element) {
@@ -103,7 +103,7 @@ void execute_graph_with_threads(Graph g) {
     TaskSystem task_system(num_threads);
 
     auto decorated_graph = g;
-    // .decorate(timing_decorator)
+    // .decorate(timing_decorator);
     // .decorate(print_decorator);
 
     auto t0 = std::chrono::steady_clock::now();

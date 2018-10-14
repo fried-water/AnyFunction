@@ -31,18 +31,12 @@ Vec make_vector(Elements&&... elements) {
 
 template <typename T, typename... Elements>
 std::vector<T> make_std_vector(Elements&&... elements) {
-  std::vector<T> vec;
-  vec.reserve(sizeof...(Elements));
-  (vec.emplace_back(std::forward<Elements>(elements)), ...);
-  return vec;
+  return make_vector<std::vector<T>>(std::forward<Elements>(elements)...);
 }
 
 template <typename T, typename... Elements>
 small_vec<T, 3> make_small_vector(Elements&&... elements) {
-  small_vec<T, 3> vec;
-  vec.reserve(sizeof...(Elements));
-  (vec.emplace_back(std::forward<Elements>(elements)), ...);
-  return vec;
+  return make_vector<small_vec<T, 3>>(std::forward<Elements>(elements)...);
 }
 
 template <typename OutputContainer, typename InputContainer, typename Transform>
