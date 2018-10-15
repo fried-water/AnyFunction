@@ -1,5 +1,5 @@
-#ifndef TASKS_H
-#define TASKS_H
+#ifndef EXECUTOR_TASK_EXECUTOR_H
+#define EXECUTOR_TASK_EXECUTOR_H
 
 #include <atomic>
 #include <condition_variable>
@@ -11,7 +11,7 @@
 
 namespace anyf {
 
-class TaskQueue {
+class task_queue {
   std::deque<std::tuple<std::function<void()>, int>> _q;
   bool _done = false;
   std::mutex _mutex;
@@ -69,11 +69,11 @@ public:
   }
 };
 
-class TaskSystem {
+class task_executor {
   unsigned _count = std::thread::hardware_concurrency();
   int _next_task_group = 1;
   std::vector<std::thread> _threads;
-  std::vector<TaskQueue> _q;
+  std::vector<task_queue> _q;
   std::atomic<unsigned> _index = 0;
 
   std::unordered_map<int, std::atomic<unsigned>> _group_task_counts;
@@ -116,19 +116,19 @@ class TaskSystem {
   }
 
 public:
-  TaskSystem() : _q(_count) {
+  task_executor() : _q(_count) {
     for(unsigned i = 0; i < _count - 1; i++) {
       _threads.emplace_back([this, i]() { run(i); });
     }
   }
 
-  TaskSystem(unsigned count) : _count(count), _q(_count) {
+  task_executor(unsigned count) : _count(count), _q(_count) {
     for(unsigned i = 0; i < _count - 1; i++) {
       _threads.emplace_back([this, i]() { run(i); });
     }
   }
 
-  ~TaskSystem() {
+  ~task_executor() {
     for(auto& q : _q)
       q.done();
     for(auto& thread : _threads)

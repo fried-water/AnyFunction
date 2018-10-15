@@ -1,5 +1,5 @@
-#ifndef TBB_EXECUTOR_H
-#define TBB_EXECUTOR_H
+#ifndef EXECUTOR_TBB_EXECUTOR_H
+#define EXECUTOR_TBB_EXECUTOR_H
 
 #include "tbb/task_group.h"
 #include "tbb/task_scheduler_init.h"

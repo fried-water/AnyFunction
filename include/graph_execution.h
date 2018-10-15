@@ -1,5 +1,5 @@
-#ifndef EXECUTOR_H
-#define EXECUTOR_H
+#ifndef GRAPH_EXECUTION_H
+#define GRAPH_EXECUTION_H
 
 #include "graph.h"
 
