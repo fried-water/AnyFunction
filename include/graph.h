@@ -225,7 +225,7 @@ private:
 
   std::type_index get_type(int i) const {
     return std::visit(
-        [this](const auto& arg) {
+        [](const auto& arg) {
           using T = std::decay_t<decltype(arg)>;
           if constexpr(std::is_same_v<T, graph::node>) {
             return arg.func.output_type();
@@ -259,7 +259,7 @@ private:
       // Set all defaults taken by ref as ref
       boost::for_each(outputs, [this](graph::edge& edge) {
         std::visit(
-            [this, &edge](const auto& arg) {
+            [&edge](const auto& arg) {
               using T = std::decay_t<decltype(arg)>;
               if constexpr(std::is_same_v<T, graph::node>) {
                 if(arg.func.input_by_cref()[edge.arg_idx]) {

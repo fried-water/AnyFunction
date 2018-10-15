@@ -1,11 +1,15 @@
 #include "executor.h"
+#include "sentinal.h"
 #include "tasks.h"
-#include "test.h"
+#include "executor/tbb_executor.h"
 
 #include <algorithm>
 #include <iostream>
 #include <numeric>
 #include <random>
+
+#define BOOST_TEST_DYN_LINK
+#include <boost/test/unit_test.hpp>
 
 using namespace anyf;
 
@@ -97,10 +101,10 @@ auto create_graph() {
 template <typename Graph>
 void execute_graph_with_threads(Graph g) {
   int size = 100'000;
-  int max_threads = 4;
+  int max_threads = 8;
 
   for(int num_threads = 1; num_threads <= max_threads; num_threads++) {
-    TaskSystem task_system(num_threads);
+    tbb_executor task_system(num_threads);
 
     auto decorated_graph = g;
     // .decorate(timing_decorator);
@@ -117,56 +121,51 @@ void execute_graph_with_threads(Graph g) {
   }
 }
 
-struct SentinalDestructor {
+struct sentinalDestructor {
   bool valid = true;
 
-  SentinalDestructor() {}
+  sentinalDestructor() {}
 
-  ~SentinalDestructor() {
+  ~sentinalDestructor() {
     if(valid) {
       std::cout << "Destruct--------------------------------\n";
     }
   }
 
-  SentinalDestructor(const SentinalDestructor& other) : valid(other.valid) {}
+  sentinalDestructor(const sentinalDestructor& other) : valid(other.valid) {}
 
-  SentinalDestructor(SentinalDestructor&& other) : valid(other.valid) {
+  sentinalDestructor(sentinalDestructor&& other) : valid(other.valid) {
     other.valid = false;
   }
 };
 
 auto take(int i) {
-  return [i](Sentinal sent) {
+  return [i](sentinal sent) {
     std::cout << "Take" << i << " " << sent.copies << " " << sent.moves << "\n";
   };
 }
 
-void take_ref(const Sentinal& sent) {
+void take_ref(const sentinal& sent) {
   std::cout << "Ref "
             << " " << sent.copies << " " << sent.moves << "\n";
 }
 
-void test_graph() {
-  auto g = make_graph<Sentinal, Sentinal>({"in1", "in2"})
+} // namespace
+
+BOOST_AUTO_TEST_CASE(example_graph) {
+  execute_graph_with_threads(create_graph());
+}
+
+BOOST_AUTO_TEST_CASE(test_graph) {
+  auto g = make_graph<sentinal, sentinal>({"in1", "in2"})
                .add(take(1), "val", {".in1"}, {pass_by::copy})
                .add(take(2), "val2", {".in1"}, {pass_by::move})
                .add(take(3), "val3", {".in2"}, {pass_by::move})
                .add(take_ref, "ref", {".in2"}, {pass_by::ref})
-               .output<Sentinal>(".in2");
+               .output<sentinal>(".in2");
 
-  TaskSystem task_system(1);
-  Sentinal x = execute_graph(g, task_system, Sentinal(), Sentinal());
+  tbb_executor task_system;
+  sentinal x = execute_graph(g, task_system, sentinal(), sentinal());
   std::cout << "Result "
             << " " << x.copies << " " << x.moves << "\n";
-}
-
-} // namespace
-
-int main() {
-  execute_graph_with_threads(create_graph());
-  test_graph();
-  any_function_test();
-  // stress_test();
-
-  return 0;
 }

@@ -1,8 +1,11 @@
 #include "executor.h"
-#include "tasks.h"
-#include "test.h"
+#include "executor/tbb_executor.h"
 
 #include <chrono>
+#include <thread>
+
+#define BOOST_TEST_DYN_LINK
+#include <boost/test/unit_test.hpp>
 
 using namespace anyf;
 
@@ -14,28 +17,31 @@ int sum(int x, int y) { return x + y; }
 function_graph<int> create_graph(int depth) {
   auto g = make_graph();
 
+  std::string prefix("node");
+
   int num_inputs = 1 << depth;
   for(int i = 0; i < num_inputs; i++) {
-    g.add(create_int, std::to_string(depth) + ":" + std::to_string(i));
+    g.add(create_int, prefix + std::to_string(depth) + "_" + std::to_string(i));
   }
 
   for(int layer = depth - 1; layer >= 0; layer--) {
     int nodes_on_layer = 1 << layer;
     for(int i = 0; i < nodes_on_layer; i++) {
-      g.add(sum, std::to_string(layer) + ":" + std::to_string(i),
-            {std::to_string(layer + 1) + ":" + std::to_string((i * 2)),
-             std::to_string(layer + 1) + ":" + std::to_string((i * 2) + 1)});
+      g.add(sum, prefix + std::to_string(layer) + "_" + std::to_string(i),
+            {prefix + std::to_string(layer + 1) + "_" + std::to_string((i * 2)),
+             prefix + std::to_string(layer + 1) + "_" +
+                 std::to_string((i * 2) + 1)});
     }
   }
 
-  return g.output<int>("0:0");
+  return g.output<int>(prefix + "0_0");
 }
 } // namespace
 
-void stress_test() {
+BOOST_AUTO_TEST_CASE(stress_test) {
   const int depth = 14;
   const int num_executions = 100;
-  TaskSystem task_system;
+  tbb_executor executor;
 
   std::cout << "Thread count: " << std::thread::hardware_concurrency() << '\n';
   std::cout << "Creating graph of size " << ((1 << depth) * 2 - 1) << "\n";
@@ -52,7 +58,7 @@ void stress_test() {
   t0 = std::chrono::steady_clock::now();
   int result;
   for(int i = 0; i < num_executions; i++) {
-    result = execute_graph(g, task_system);
+    result = execute_graph(g, executor);
   }
   t1 = std::chrono::steady_clock::now();
 
