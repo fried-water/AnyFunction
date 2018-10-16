@@ -1,6 +1,8 @@
 #ifndef EXECUTOR_TASK_EXECUTOR_H
 #define EXECUTOR_TASK_EXECUTOR_H
 
+#include <cassert>
+
 #include <atomic>
 #include <condition_variable>
 #include <deque>

@@ -1,6 +1,9 @@
+#include "executor/sequential_executor.h"
+#include "executor/task_executor.h"
+#include "executor/tbb_executor.h"
+
 #include "graph_execution.h"
 #include "sentinal.h"
-#include "executor/tbb_executor.h"
 
 #include <algorithm>
 #include <chrono>
@@ -98,13 +101,13 @@ auto create_graph() {
       .output<int>("final_sum");
 }
 
-template <typename Graph>
+template <typename Executor, typename Graph>
 void execute_graph_with_threads(Graph g) {
   int size = 100'000;
-  int max_threads = 8;
+  int max_threads = 4;
 
   for(int num_threads = 1; num_threads <= max_threads; num_threads++) {
-    tbb_executor task_system(num_threads);
+    Executor executor(num_threads);
 
     auto decorated_graph = g;
     // .decorate(timing_decorator);
@@ -112,7 +115,7 @@ void execute_graph_with_threads(Graph g) {
 
     auto t0 = std::chrono::steady_clock::now();
     std::cout << "--------- " << num_threads << " THREADS --------\n";
-    uint64_t result = execute_graph(decorated_graph, task_system, size);
+    uint64_t result = execute_graph(decorated_graph, executor, size);
     auto t1 = std::chrono::steady_clock::now();
     std::cout << "result is " << result << " after "
               << std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0)
@@ -152,8 +155,19 @@ void take_ref(const sentinal& sent) {
 
 } // namespace
 
-BOOST_AUTO_TEST_CASE(example_graph) {
-  execute_graph_with_threads(create_graph());
+BOOST_AUTO_TEST_CASE(example_graph_tbb) {
+  std::cout << "\nExecuting graph with TBB\n\n";
+  execute_graph_with_threads<tbb_executor>(create_graph());
+}
+
+BOOST_AUTO_TEST_CASE(example_graph_seq) {
+  std::cout << "\nExecuting graph Sequentially\n\n";
+  execute_graph_with_threads<sequential_executor>(create_graph());
+}
+
+BOOST_AUTO_TEST_CASE(example_graph_task) {
+  std::cout << "\nExecuting graph with custom task system\n\n";
+  execute_graph_with_threads<task_executor>(create_graph());
 }
 
 BOOST_AUTO_TEST_CASE(test_graph) {

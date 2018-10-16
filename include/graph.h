@@ -254,8 +254,8 @@ private:
   }
 
   std::vector<small_vec3<graph::edge>>
-  fix_default_pass_bys(std::vector<small_vec3<graph::edge>> outputs) {
-    boost::for_each(outputs, [this](auto& outputs) {
+  fix_default_pass_bys(std::vector<small_vec3<graph::edge>> all_outputs) {
+    boost::for_each(all_outputs, [this](auto& outputs) {
       // Set all defaults taken by ref as ref
       boost::for_each(outputs, [this](graph::edge& edge) {
         std::visit(
@@ -301,7 +301,7 @@ private:
       });
     });
 
-    return outputs;
+    return all_outputs;
   }
 
   constructing_graph& add_internal(any_function f, std::string name,
