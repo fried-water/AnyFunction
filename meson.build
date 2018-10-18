@@ -6,6 +6,7 @@ header_files = [
   'include/any_function.h',
   'include/graph.h',
   'include/graph_execution.h',
+  'include/higher_order.h',
   'include/traits.h',
   'include/util.h',
   'include/executor/sequential_executor.h',
@@ -15,6 +16,7 @@ header_files = [
 cpp_files = [
   'test/test_main.cpp',
   'test/executor_test.cpp',
+  'test/higher_order_test.cpp',
   'test/graph_test.cpp',
   'test/any_function_test.cpp',
   'test/stress_test.cpp']

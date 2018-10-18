@@ -44,6 +44,15 @@ struct is_decayed : is_decayed_impl<T> {};
 template <typename T>
 constexpr bool is_decayed_v = is_decayed<T>::value;
 
+template <typename T>
+struct is_const_ref : std::false_type {};
+
+template <typename T>
+struct is_const_ref<T const&> : std::true_type {};
+
+template <typename T>
+constexpr bool is_const_ref_v = is_const_ref<T>::value;
+
 template <typename T, typename Enable = void>
 struct is_decayed_or_cref_impl : std::false_type {};
 
@@ -81,6 +90,44 @@ struct tuple_any_of<Pred, std::tuple<Ts...>> {
 
 template <template <typename> typename Pred, typename Tuple>
 constexpr bool tuple_any_of_v = tuple_any_of<Pred, Tuple>::value;
+
+template <template <typename> typename, typename>
+struct tuple_count;
+
+template <template <typename> typename Pred, typename... Ts>
+struct tuple_count<Pred, std::tuple<Ts...>> {
+  static constexpr int value = ((Pred<Ts>::value ? 1 : 0) + ...);
+};
+
+template <template <typename> typename Pred, typename Tuple>
+constexpr int tuple_count_v = tuple_count<Pred, Tuple>::value;
+
+template <template <typename> typename, typename>
+struct tuple_pred_array;
+
+template <template <typename> typename Pred, typename... Ts>
+struct tuple_pred_array<Pred, std::tuple<Ts...>> {
+  static constexpr std::array<bool, sizeof...(Ts)> value = {Pred<Ts>::value...};
+};
+
+template <template <typename> typename Pred, typename Tuple>
+constexpr auto tuple_pred_array_v = tuple_pred_array<Pred, Tuple>::value;
+
+template <typename>
+struct tuple_drop_first;
+
+template <>
+struct tuple_drop_first<std::tuple<>> {
+  using type = std::tuple<>;
+};
+
+template <typename T, typename... Ts>
+struct tuple_drop_first<std::tuple<T, Ts...>> {
+  using type = std::tuple<Ts...>;
+};
+
+template <typename Tuple>
+using tuple_drop_first_t = typename tuple_drop_first<Tuple>::type;
 
 } // namespace traits
 } // namespace anyf
