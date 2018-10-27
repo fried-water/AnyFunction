@@ -3,7 +3,7 @@
 
 #include "graph.h"
 
-#include <boost/range/algorithm.hpp>
+#include <boost/range/algorithm/for_each.hpp>
 #include <boost/range/combine.hpp>
 
 #include <atomic>
@@ -163,32 +163,28 @@ Output execute_graph(const function_graph<Output, std::decay_t<Inputs>...>& g,
   int parameter_index = 0;
 
   // Create tasks
-  boost::transform(
-      g.nodes(), std::back_inserter(tasks), [&](const auto& variant) {
-        return std::visit(
-            [&](const auto& arg) {
-              using T = std::decay_t<decltype(arg)>;
-              if constexpr(std::is_same_v<T, graph::source>) {
-                auto task = std::make_unique<function_task>(std::nullopt, 1);
-                task->result = std::move(input_vec[parameter_index]);
-                parameter_index++;
+  boost::transform(g.nodes(), std::back_inserter(tasks), [&](const auto& node) {
+    return std::visit(
+        [&](const auto& arg) {
+          using T = std::decay_t<decltype(arg)>;
+          if constexpr(std::is_same_v<T, graph::source>) {
+            auto task = std::make_unique<function_task>(std::nullopt, 1);
+            task->result = std::move(input_vec[parameter_index]);
+            parameter_index++;
 
-                return task;
-              } else if constexpr(std::is_same_v<T, graph::node>) {
-                return std::make_unique<function_task>(
-                    std::get<graph::node>(variant).func, arg.inputs.size());
-              } else {
-                return std::make_unique<function_task>(std::nullopt, 2);
-              }
-            },
-            variant);
-      });
-
-  assert(tasks.size() == g.nodes().size());
+            return task;
+          } else if constexpr(std::is_same_v<T, graph::func_node>) {
+            return std::make_unique<function_task>(arg.func, arg.func.input_types().size());
+          } else {
+            return std::make_unique<function_task>(std::nullopt, 2);
+          }
+        },
+        node.variant);
+  });
 
   // Connect outputs
   for(int i = 0; i < static_cast<int>(g.nodes().size() - 1); ++i) {
-    for(graph::edge edge : g.outputs(i)) {
+    for(graph::edge edge : g.nodes()[i].outputs) {
       if(edge.pb == pass_by::ref) {
         tasks[i]->output_refs.emplace_back(tasks[edge.dst_id].get(),
                                            edge.arg_idx);
@@ -213,10 +209,10 @@ Output execute_graph(const function_graph<Output, std::decay_t<Inputs>...>& g,
   // Propogate inputs
   boost::for_each(boost::combine(g.nodes(), tasks),
                   [&tasks_to_run](auto&& tuple) {
-                    const auto& variant = boost::get<0>(tuple);
+                    const auto& node = boost::get<0>(tuple);
                     function_task& task = *boost::get<1>(tuple);
 
-                    if(std::holds_alternative<graph::source>(variant)) {
+                    if(std::holds_alternative<graph::source>(node.variant)) {
                       propogate_outputs(task, tasks_to_run);
                     }
                   });

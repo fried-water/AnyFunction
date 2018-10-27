@@ -83,14 +83,14 @@ auto create_pipeline(int seed, int element) {
 
 auto create_graph() {
   return make_graph<int>({"size"})
-      .add(create_pipeline(0, 10), "pipe1", {".size"})
-      .add(create_pipeline(1, 10), "pipe2", {".size"})
-      .add(create_pipeline(2, 10), "pipe3", {".size"})
-      .add(create_pipeline(3, 10), "pipe4", {".size"})
-      .add(create_pipeline(4, 10), "pipe5", {".size"})
-      .add(create_pipeline(5, 10), "pipe6", {".size"})
-      .add(create_pipeline(6, 10), "pipe7", {".size"})
-      .add(create_pipeline(7, 10), "pipe8", {".size"})
+      .add(create_pipeline(0, 10), "pipe1", {"size"})
+      .add(create_pipeline(1, 10), "pipe2", {"size"})
+      .add(create_pipeline(2, 10), "pipe3", {"size"})
+      .add(create_pipeline(3, 10), "pipe4", {"size"})
+      .add(create_pipeline(4, 10), "pipe5", {"size"})
+      .add(create_pipeline(5, 10), "pipe6", {"size"})
+      .add(create_pipeline(6, 10), "pipe7", {"size"})
+      .add(create_pipeline(7, 10), "pipe8", {"size"})
       .add(sum, "sum1", {"pipe1", "pipe2"})
       .add(sum, "sum2", {"pipe3", "pipe4"})
       .add(sum, "sum3", {"pipe5", "pipe6"})
@@ -172,11 +172,11 @@ BOOST_AUTO_TEST_CASE(example_graph_task) {
 
 BOOST_AUTO_TEST_CASE(test_graph) {
   auto g = make_graph<sentinal, sentinal>({"in1", "in2"})
-               .add(take(1), "val", {".in1"}, {pass_by::copy})
-               .add(take(2), "val2", {".in1"}, {pass_by::move})
-               .add(take(3), "val3", {".in2"}, {pass_by::move})
-               .add(take_ref, "ref", {".in2"}, {pass_by::ref})
-               .output<sentinal>(".in2");
+               .add(take(1), "val", {"in1"}, {pass_by::copy})
+               .add(take(2), "val2", {"in1"}, {pass_by::move})
+               .add(take(3), "val3", {"in2"}, {pass_by::move})
+               .add(take_ref, "ref", {"in2"}, {pass_by::ref})
+               .output<sentinal>("in2");
 
   tbb_executor task_system;
   sentinal x = execute_graph(g, task_system, sentinal(), sentinal());

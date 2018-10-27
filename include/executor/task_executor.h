@@ -10,6 +10,8 @@
 #include <mutex>
 #include <optional>
 #include <thread>
+#include <vector>
+#include <unordered_map>
 
 namespace anyf {
 
