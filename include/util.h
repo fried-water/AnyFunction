@@ -11,15 +11,24 @@
 namespace anyf {
 
 template <typename T, std::size_t N>
-using small_vec = boost::container::small_vector<T, N>;
+using SmallVec = boost::container::small_vector<T, N>;
 
 template <typename T>
-using small_vec3 = boost::container::small_vector<T, 3>;
-
-template <typename T>
-using small_vec_base = boost::container::small_vector_base<T>;
+using SmallVecBase = boost::container::small_vector_base<T>;
 
 namespace util {
+
+template <typename Iter, typename NextChunk, typename F>
+void chunked_iteration(Iter begin, Iter end, NextChunk next_chunk, F f) {
+  auto first = begin;
+  auto second = next_chunk(begin);
+
+  while(first != end) {
+    f(first, second);
+    first = second;
+    second = next_chunk(first);
+  }
+}
 
 template <typename Vec, typename... Elements>
 Vec make_vector(Elements&&... elements) {
@@ -30,13 +39,13 @@ Vec make_vector(Elements&&... elements) {
 }
 
 template <typename T, typename... Elements>
-std::vector<T> make_std_vector(Elements&&... elements) {
+auto make_std_vector(Elements&&... elements) {
   return make_vector<std::vector<T>>(std::forward<Elements>(elements)...);
 }
 
-template <typename T, typename... Elements>
-small_vec<T, 3> make_small_vector(Elements&&... elements) {
-  return make_vector<small_vec<T, 3>>(std::forward<Elements>(elements)...);
+template <typename T, std::size_t N, typename... Elements>
+auto make_small_vector(Elements&&... elements) {
+  return make_vector<SmallVec<T, N>>(std::forward<Elements>(elements)...);
 }
 
 template <typename OutputContainer, typename InputContainer, typename Transform>
@@ -54,6 +63,13 @@ OutputContainer map(InputContainer&& input_container, Transform transform) {
 }
 
 namespace details {
+
+template <typename TupleTypes, typename InputContainer, std::size_t... Is>
+auto vec_to_tuple(InputContainer input, std::index_sequence<Is...>) {
+  return std::make_tuple(
+      std::any_cast<std::tuple_element_t<Is, TupleTypes>>(std::move(input[Is]))...);
+}
+
 template <typename T, typename F, std::size_t... Is>
 void tuple_for_each(T&& t, F f, std::index_sequence<Is...>) {
   (f(Is, std::get<Is>(std::forward<T>(t))), ...);
@@ -69,31 +85,20 @@ auto tuple_transform(std::tuple<Ts...> tuple, std::index_sequence<Is...>) {
   return std::make_tuple(std::get<Offset + Is>(std::move(tuple))...);
 }
 
-template <template <typename> typename Func, typename Tuple, typename Vec,
-          std::size_t... Is>
-Vec tuple_type_extraction_impl(std::index_sequence<Is...>) {
-  Vec vec;
-  vec.reserve(sizeof...(Is));
-  (vec.emplace_back(Func<std::tuple_element_t<Is, Tuple>>::value), ...);
-
-  return vec;
-}
-
 } // namespace details
 
-template <template <typename> typename Func, typename Tuple, typename Vec>
-Vec tuple_type_extraction() {
-  return details::tuple_type_extraction_impl<Func, Tuple, Vec>(
-      std::make_index_sequence<std::tuple_size_v<Tuple>>());
+template <typename TupleTypes, typename InputContainer>
+auto vec_to_tuple(InputContainer input) {
+  return details::vec_to_tuple<TupleTypes>(
+      std::move(input), std::make_index_sequence<std::tuple_size_v<TupleTypes>>());
 }
 
-template <typename... Ts, typename F, std::size_t... Is>
+template <typename... Ts, typename F>
 void tuple_for_each(const std::tuple<Ts...>& tuple, F f) {
-  details::tuple_for_each(tuple, std::move(f),
-                          std::make_index_sequence<sizeof...(Ts)>());
+  details::tuple_for_each(tuple, std::move(f), std::make_index_sequence<sizeof...(Ts)>());
 }
 
-template <typename... Ts, typename F, std::size_t... Is>
+template <typename... Ts, typename F>
 void tuple_for_each(std::tuple<Ts...>&& tuple, F f) {
   details::tuple_for_each(std::move(tuple), std::move(f),
                           std::make_index_sequence<sizeof...(Ts)>());
@@ -101,8 +106,7 @@ void tuple_for_each(std::tuple<Ts...>&& tuple, F f) {
 
 template <typename... Ts, typename F, std::size_t... Is>
 auto tuple_map(const std::tuple<Ts...>& tuple, F f) {
-  return details::tuple_map(tuple, std::move(f),
-                            std::make_index_sequence<sizeof...(Ts)>());
+  return details::tuple_map(tuple, std::move(f), std::make_index_sequence<sizeof...(Ts)>());
 }
 
 template <typename... Ts, typename F, std::size_t... Is>
@@ -112,9 +116,8 @@ auto tuple_map(std::tuple<Ts...>&& tuple, F f) {
 }
 
 template <typename T, typename... Ts>
-std::tuple<Ts...> drop_first(std::tuple<T, Ts...> tuple) {
-  return details::tuple_transform<1>(std::move(tuple),
-                                     std::make_index_sequence<sizeof...(Ts)>());
+auto drop_first(std::tuple<T, Ts...> tuple) {
+  return details::tuple_transform<1>(std::move(tuple), std::make_index_sequence<sizeof...(Ts)>());
 }
 
 } // namespace util

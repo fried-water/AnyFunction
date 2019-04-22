@@ -12,12 +12,21 @@ template <typename>
 struct function_traits;
 
 template <typename Function>
-struct function_traits
-    : public function_traits<decltype(&Function::operator())> {};
+struct function_traits : public function_traits<decltype(&Function::operator())> {};
 
 template <typename Class, typename Ret, typename... Args>
 struct function_traits<Ret (Class::*)(Args...) const> {
   static constexpr std::size_t arity = sizeof...(Args);
+  static constexpr bool is_const = true;
+
+  using return_type = Ret;
+  using args = std::tuple<Args...>;
+};
+
+template <typename Class, typename Ret, typename... Args>
+struct function_traits<Ret (Class::*)(Args...)> {
+  static constexpr std::size_t arity = sizeof...(Args);
+  static constexpr bool is_const = false;
 
   using return_type = Ret;
   using args = std::tuple<Args...>;
@@ -26,6 +35,7 @@ struct function_traits<Ret (Class::*)(Args...) const> {
 template <typename Ret, typename... Args>
 struct function_traits<Ret (*)(Args...)> {
   static constexpr std::size_t arity = sizeof...(Args);
+  static constexpr bool is_const = true;
 
   using return_type = Ret;
   using args = std::tuple<Args...>;
@@ -35,8 +45,7 @@ template <typename T, typename Enable = void>
 struct is_decayed_impl : std::false_type {};
 
 template <typename T>
-struct is_decayed_impl<T, std::enable_if_t<std::is_same_v<T, std::decay_t<T>>>>
-    : std::true_type {};
+struct is_decayed_impl<T, std::enable_if_t<std::is_same_v<T, std::decay_t<T>>>> : std::true_type {};
 
 template <typename T>
 struct is_decayed : is_decayed_impl<T> {};
@@ -57,17 +66,24 @@ template <typename T, typename Enable = void>
 struct is_decayed_or_cref_impl : std::false_type {};
 
 template <typename T>
-struct is_decayed_or_cref_impl<
-    T, std::enable_if_t<std::is_same_v<T, std::decay_t<T>>>> : std::true_type {
-};
+struct is_decayed_or_cref_impl<T, std::enable_if_t<std::is_same_v<T, std::decay_t<T>>>>
+    : std::true_type {};
 
 template <typename T>
-struct is_decayed_or_cref_impl<
-    T, std::enable_if_t<std::is_same_v<T, const std::decay_t<T>&>>>
+struct is_decayed_or_cref_impl<T, std::enable_if_t<std::is_same_v<T, const std::decay_t<T>&>>>
     : std::true_type {};
 
 template <typename T>
 struct is_decayed_or_cref : is_decayed_or_cref_impl<T> {};
+
+template <typename T>
+struct is_tuple : std::false_type {};
+
+template <typename... Ts>
+struct is_tuple<std::tuple<Ts...>> : std::true_type {};
+
+template <typename T>
+constexpr bool is_tuple_v = is_tuple<T>::value;
 
 template <template <typename> typename, typename>
 struct tuple_all_of;
@@ -79,6 +95,17 @@ struct tuple_all_of<Pred, std::tuple<Ts...>> {
 
 template <template <typename> typename Pred, typename Tuple>
 constexpr bool tuple_all_of_v = tuple_all_of<Pred, Tuple>::value;
+
+template <template <typename> typename, typename>
+struct tuple_none_of;
+
+template <template <typename> typename Pred, typename... Ts>
+struct tuple_none_of<Pred, std::tuple<Ts...>> {
+  static constexpr bool value = (!Pred<Ts>::value && ...);
+};
+
+template <template <typename> typename Pred, typename Tuple>
+constexpr bool tuple_none_of_v = tuple_none_of<Pred, Tuple>::value;
 
 template <template <typename> typename, typename>
 struct tuple_any_of;

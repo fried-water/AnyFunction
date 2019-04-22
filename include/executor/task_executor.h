@@ -10,8 +10,8 @@
 #include <mutex>
 #include <optional>
 #include <thread>
-#include <vector>
 #include <unordered_map>
+#include <vector>
 
 namespace anyf {
 
@@ -89,8 +89,7 @@ class task_executor {
         auto tuple = _q[(i + n) % _count].try_pop();
         if(tuple) {
           std::get<0> (*tuple)();
-          _group_task_counts[std::get<1>(*tuple)].fetch_sub(
-              1, std::memory_order_relaxed);
+          _group_task_counts[std::get<1>(*tuple)].fetch_sub(1, std::memory_order_relaxed);
           continue;
         }
       }
@@ -99,8 +98,7 @@ class task_executor {
       if(!tuple)
         break;
       std::get<0> (*tuple)();
-      _group_task_counts[std::get<1>(*tuple)].fetch_sub(
-          1, std::memory_order_relaxed);
+      _group_task_counts[std::get<1>(*tuple)].fetch_sub(1, std::memory_order_relaxed);
     }
   }
 
@@ -111,8 +109,7 @@ class task_executor {
         auto tuple = _q[(_count - 1 + n) % _count].try_pop();
         if(tuple) {
           std::get<0> (*tuple)();
-          _group_task_counts[std::get<1>(*tuple)].fetch_sub(
-              1, std::memory_order_relaxed);
+          _group_task_counts[std::get<1>(*tuple)].fetch_sub(1, std::memory_order_relaxed);
           continue;
         }
       }

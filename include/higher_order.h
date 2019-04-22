@@ -44,22 +44,19 @@ auto map(F f) {
   using Ret = typename function_traits<F>::return_type;
   using Args = typename function_traits<F>::args;
 
-  constexpr int num_Args = std::tuple_size_v<Args>;
+  constexpr int NUM_ARGS = std::tuple_size_v<Args>;
 
-  static_assert(num_Args > 0,
-                "Map requires function takes atleast one argument");
+  static_assert(NUM_ARGS > 0, "Map requires function takes atleast one argument");
 
-  if constexpr(num_Args > 0) {
+  if constexpr(NUM_ARGS > 0) {
     using first_arg = std::tuple_element_t<0, Args>;
     using rest_of_Args = tuple_drop_first_t<Args>;
 
-    static_assert(is_decayed_v<first_arg>,
-                  "First argument must be taken by value");
+    static_assert(is_decayed_v<first_arg>, "First argument must be taken by value");
     static_assert(tuple_all_of_v<is_const_ref, rest_of_Args>,
                   "Arguments beyond the first must be taken by const&");
 
-    if constexpr(is_decayed_v<first_arg> &&
-                 tuple_all_of_v<is_const_ref, rest_of_Args>) {
+    if constexpr(is_decayed_v<first_arg> && tuple_all_of_v<is_const_ref, rest_of_Args>) {
       return details::map_helper<F, Ret, Args>(std::move(f));
     }
   }

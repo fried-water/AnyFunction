@@ -1,17 +1,17 @@
 #ifndef SENTINAL_H
 #define SENTINAL_H
 
-struct sentinal {
+struct Sentinal {
   int copies = 0;
   int moves = 0;
 
-  sentinal() {}
+  Sentinal() = default;
 
-  sentinal(const sentinal& x) : copies(x.copies), moves(x.moves) { ++copies; }
-  sentinal(sentinal&& x) : copies(x.copies), moves(x.moves) { ++moves; }
+  Sentinal(const Sentinal& x) : copies(x.copies), moves(x.moves) { ++copies; }
+  Sentinal(Sentinal&& x) : copies(x.copies), moves(x.moves) { ++moves; }
 
-  sentinal& operator=(const sentinal& x) = delete;
-  sentinal& operator=(sentinal&& x) = delete;
+  Sentinal& operator=(const Sentinal& x) = delete;
+  Sentinal& operator=(Sentinal&& x) = delete;
 };
 
 #endif

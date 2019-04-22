@@ -1,4 +1,4 @@
-#include "experimental/any_function.h"
+#include "any_function.h"
 
 #include "sentinal.h"
 
@@ -7,124 +7,103 @@
 
 using namespace anyf;
 
-bool valid_exception(bad_any_invocation const&) { return true; }
+namespace {
 
-BOOST_AUTO_TEST_CASE(test_input_val) {
-  auto test_val = [](sentinal a, int copies, int moves) {
-    BOOST_CHECK_EQUAL(moves, a.moves);
-    BOOST_CHECK_EQUAL(copies, a.copies);
-  };
+template <typename... Outputs, typename... Inputs>
+std::tuple<Outputs...> invoke_with_values(AnyFunction func, Inputs... inputs) {
+  auto any_vec = util::make_small_vector<std::any, 3>(inputs...);
 
-  auto func = make_any_function(test_val);
+  auto result =
+      func.invoke(util::map<AnyFunction::InvokeInput>(any_vec, [](auto& x) { return &x; }));
 
-  sentinal x;
-  const sentinal c_x;
+  BOOST_CHECK_EQUAL(sizeof...(Outputs), result.size());
 
-  test_val(x, 1, 0);
-  test_val(std::move(x), 0, 1);
-  test_val(c_x, 1, 0);
-  test_val(std::move(c_x), 1, 0);
-
-  func.invoke<void>(x, 1, 0);
-  func.invoke<void>(std::move(x), 0, 1);
-  func.invoke<void>(c_x, 1, 0);
-  func.invoke<void>(std::move(c_x), 1, 0);
+  return util::vec_to_tuple<std::tuple<Outputs...>>(std::move(result));
 }
 
-BOOST_AUTO_TEST_CASE(test_input_ref) {
-  auto test_ref = [](sentinal& a, int copies, int moves) {
-    BOOST_CHECK_EQUAL(moves, a.moves);
-    BOOST_CHECK_EQUAL(copies, a.copies);
-  };
+void void_fp(){};
+int simple_fp() { return 1; };
+auto tuple_fp() { return std::make_tuple('a', 1); };
 
-  auto func = make_any_function(test_ref);
+void no_args(){};
+void one_arg(int){};
+void many_args(std::tuple<>, const std::string, char const&){};
 
-  sentinal x;
-  const sentinal c_x;
+}; // namespace
 
-  test_ref(x, 0, 0);
-  // test_ref(std::move(x), 0, 0);   // Not allowed
-  // test_ref(c_x, 0, 0);            // Not allowed
-  // test_ref(std::move(c_x), 0, 0); // Not allowed
+BOOST_AUTO_TEST_CASE(test_any_function_return_types) {
+  auto void_func = make_any_function(void_fp);
+  auto single_func = make_any_function(simple_fp);
+  auto tuple_func = make_any_function(tuple_fp);
 
-  func.invoke<void>(x, 0, 0);
-  BOOST_CHECK_EXCEPTION(func.invoke<void>(std::move(x), 0, 0),
-                        bad_any_invocation, valid_exception);
-  // BOOST_CHECK_EXCEPTION(func.invoke<void>(c_x, 0, 0), bad_any_invocation,
-  // valid_exception); BOOST_CHECK_EXCEPTION(func.invoke<void>(std::move(c_x),
-  // 0, 0), bad_any_invocation, valid_exception);
-  // TODO throw exception
+  BOOST_CHECK(boost::equal(std::vector<Type>{}, void_func.output_types()));
+  BOOST_CHECK(boost::equal(std::vector<Type>{make_type<int>()}, single_func.output_types()));
+  BOOST_CHECK(boost::equal(std::vector<Type>{make_type<char>(), make_type<int>()},
+                           tuple_func.output_types()));
+
+  BOOST_CHECK(std::make_tuple() == invoke_with_values(void_func));
+  BOOST_CHECK(std::make_tuple(1) == invoke_with_values<int>(single_func));
+  auto macros_suck = std::make_tuple('a', 1) == invoke_with_values<char, int>(tuple_func);
+  BOOST_CHECK(macros_suck);
 }
 
-BOOST_AUTO_TEST_CASE(test_input_const_ref) {
-  auto test_const_ref = [](const sentinal& a, int copies, int moves) {
-    BOOST_CHECK_EQUAL(moves, a.moves);
-    BOOST_CHECK_EQUAL(copies, a.copies);
-  };
+BOOST_AUTO_TEST_CASE(test_any_function_input_types) {
+  auto no_args_func = make_any_function(no_args);
+  auto one_arg_func = make_any_function(one_arg);
+  auto many_args_func = make_any_function(many_args);
 
-  auto func = make_any_function(test_const_ref);
-
-  sentinal x;
-  const sentinal c_x;
-
-  test_const_ref(x, 0, 0);
-  test_const_ref(std::move(x), 0, 0);
-  test_const_ref(c_x, 0, 0);
-  test_const_ref(std::move(c_x), 0, 0);
-
-  func.invoke<void>(x, 0, 0);
-  func.invoke<void>(std::move(x), 0, 0);
-  func.invoke<void>(c_x, 0, 0);
-  func.invoke<void>(std::move(c_x), 0, 0);
+  BOOST_CHECK(boost::equal(std::vector<Type>{}, no_args_func.input_types()));
+  BOOST_CHECK(boost::equal(std::vector<Type>{make_type<int>()}, one_arg_func.input_types()));
+  BOOST_CHECK(boost::equal(std::vector<Type>{make_type<std::tuple<>>(), make_type<std::string>(),
+                                             make_type<char const&>()},
+                           many_args_func.input_types()));
 }
 
-BOOST_AUTO_TEST_CASE(test_input_rref) {
-  auto test_rref = [](sentinal&& a, int copies, int moves) {
-    BOOST_CHECK_EQUAL(moves, a.moves);
-    BOOST_CHECK_EQUAL(copies, a.copies);
-  };
+bool valid_exception(std::bad_any_cast const&) { return true; }
+bool valid_exception(BadInvocation const&) { return true; }
 
-  auto func = make_any_function(test_rref);
+BOOST_AUTO_TEST_CASE(test_any_function_incorrect_args) {
+  auto func = make_any_function([](int) {});
 
-  sentinal x;
-  const sentinal c_x;
+  BOOST_CHECK_EXCEPTION(invoke_with_values(func, 'a'), std::bad_any_cast, valid_exception);
 
-  // test_rref(x, 0, 0); // Not allowed
-  test_rref(std::move(x), 0, 0);
-  // test_rref(c_x, 0, 0); // Not allowed
-  // test_rref(std::move(c_x), 0, 0); // Not allowed
-
-  BOOST_CHECK_EXCEPTION(func.invoke<void>(x, 0, 0), bad_any_invocation,
-                        valid_exception);
-  func.invoke<void>(std::move(x), 0, 0);
-  BOOST_CHECK_EXCEPTION(func.invoke<void>(c_x, 0, 0), bad_any_invocation,
-                        valid_exception);
-  BOOST_CHECK_EXCEPTION(func.invoke<void>(std::move(c_x), 0, 0),
-                        bad_any_invocation, valid_exception);
+  BOOST_CHECK_EXCEPTION(invoke_with_values(func), BadInvocation, valid_exception);
+  BOOST_CHECK_EXCEPTION(invoke_with_values(func, 1, 2), BadInvocation, valid_exception);
+  invoke_with_values(func, 1);
 }
 
-BOOST_AUTO_TEST_CASE(test_input_const_rref) {
-  auto test_const_rref = [](const sentinal&& a, int copies, int moves) {
-    BOOST_CHECK_EQUAL(moves, a.moves);
-    BOOST_CHECK_EQUAL(copies, a.copies);
-  };
+BOOST_AUTO_TEST_CASE(test_any_function_invalid) {
+  // auto no_pointers = make_any_function([](int*){});
+  // auto no_const_pointers = make_any_function([](int const*){});
+  // auto no_non_const_refs = make_any_function([](int&){});
 
-  auto func = make_any_function(test_const_rref);
+  // auto no_return_refs = make_any_function([](int const& x) -> int const& {
+  // return x; }); auto no_return_ptrs = make_any_function([](int const& x) {
+  // return &x; });
 
-  sentinal x;
-  const sentinal c_x;
+  // auto must_be_const = make_any_function([]() mutable {});
+}
 
-  // test_const_rref(x, 0, 0); // Not allowed
-  test_const_rref(std::move(x), 0, 0);
-  // test_const_rref(c_x, 0, 0); // Not allowed
-  test_const_rref(std::move(c_x), 0, 0);
+BOOST_AUTO_TEST_CASE(test_any_function_num_moves_copies) {
+  auto sentinal_func = make_any_function([](Sentinal x, Sentinal const& y) {
+    BOOST_CHECK_EQUAL(0, x.copies);
+    BOOST_CHECK_EQUAL(2, x.moves); // 1 move into any, 1 into function
 
-  BOOST_CHECK_EXCEPTION(func.invoke<void>(x, 0, 0), bad_any_invocation,
-                        valid_exception);
-  func.invoke<void>(std::move(x), 0, 0);
-  BOOST_CHECK_EXCEPTION(func.invoke<void>(c_x, 0, 0), bad_any_invocation,
-                        valid_exception);
-  // BOOST_CHECK_EXCEPTION(func.invoke<void>(std::move(c_x), 0, 0),
-  // bad_any_invocation, valid_exception);
-  // TODO
+    BOOST_CHECK_EQUAL(0, y.copies);
+    BOOST_CHECK_EQUAL(1, y.moves); // 1 move into any
+
+    return Sentinal{};
+  });
+
+  auto input_vals = util::make_small_vector<std::any, 3>(Sentinal{}, Sentinal{});
+
+  auto result = sentinal_func.invoke(
+      util::map<AnyFunction::InvokeInput>(input_vals, [](auto& x) { return &x; }));
+
+  BOOST_CHECK_EQUAL(1, result.size());
+
+  Sentinal const* result_sentinal = std::any_cast<Sentinal>(&result[0]);
+
+  BOOST_CHECK_EQUAL(0, result_sentinal->copies);
+  BOOST_CHECK_EQUAL(1, result_sentinal->moves); // 1 move out of function
 }
