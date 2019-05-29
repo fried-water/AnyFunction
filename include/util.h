@@ -16,19 +16,14 @@ using SmallVec = boost::container::small_vector<T, N>;
 template <typename T>
 using SmallVecBase = boost::container::small_vector_base<T>;
 
+struct Identity {
+  template<typename T>
+  T operator()(T t) const {
+    return t;
+  } 
+};
+
 namespace util {
-
-template <typename Iter, typename NextChunk, typename F>
-void chunked_iteration(Iter begin, Iter end, NextChunk next_chunk, F f) {
-  auto first = begin;
-  auto second = next_chunk(begin);
-
-  while(first != end) {
-    f(first, second);
-    first = second;
-    second = next_chunk(first);
-  }
-}
 
 template <typename Vec, typename... Elements>
 Vec make_vector(Elements&&... elements) {

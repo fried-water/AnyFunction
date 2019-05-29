@@ -12,6 +12,7 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <variant>
+#include <vector>
 
 #include <boost/container/small_vector.hpp>
 #include <boost/range/adaptor/indexed.hpp>
@@ -29,6 +30,29 @@ struct BadConstruction : public std::exception {
 };
 
 enum class PassBy { move, copy, ref };
+
+namespace detail {
+
+template<size_t Count>
+std::array<std::string, Count> generate_names(const std::string& prefix = "") {
+  std::array<std::string, Count> names;
+
+  for(int i = 0; i < static_cast<int>(Count); ++i) {
+    names[i] = prefix + std::to_string(i);
+  }
+
+  return names;
+}
+
+// template <typename T>
+// struct is_function_graph : std::false_type{};
+
+// template <typename Inputs, typename Outputs>
+// struct is_function_graph<FunctionGraph<Inputs, Outputs>> : std::true_type {};
+
+// template <typename T>
+// using is_function_graph_v = is_function_graph<T>::value;
+}
 
 namespace graph {
 
@@ -81,10 +105,14 @@ struct Node {
   SmallVec<std::string, 1> output_names;
   SmallVec<Edge, 2> outputs;
 
-  Node(Source src, std::string name, SmallVec<std::string, 1> output_names)
-      : Node(VariantT(std::move(src)), std::move(name), std::move(output_names)) {}
-  Node(FuncNode FuncNode, std::string name, SmallVec<std::string, 1> output_names)
-      : Node(VariantT(std::move(FuncNode)), std::move(name), std::move(output_names)) {}
+  template <typename Names = SmallVec<std::string, 1>>
+  Node(Source src, std::string name, Names output_names)
+      : Node(VariantT{std::move(src)}, std::move(name),
+          util::map<SmallVec<std::string, 1>>(std::move(output_names), Identity{})) {}
+  template <typename Names = SmallVec<std::string, 1>>
+  Node(FuncNode FuncNode, std::string name, Names output_names)
+      : Node(VariantT{std::move(FuncNode)}, std::move(name),
+          util::map<SmallVec<std::string, 1>>(std::move(output_names), Identity{})) {}
   Node(Sink Sink) : variant(std::move(Sink)) {}
 
   SmallVecBase<Type> const& types() const {
@@ -110,16 +138,23 @@ class FunctionGraph {
 public:
   friend class ConstructingGraph<Inputs>;
   const std::vector<graph::Node>& nodes() const { return _nodes; }
+
 private:
-  FunctionGraph(std::vector<graph::Node> Nodes) : _nodes(std::move(Nodes)) {}
+  explicit FunctionGraph(std::vector<graph::Node> Nodes) : _nodes(std::move(Nodes)) {}
   std::vector<graph::Node> _nodes;
 };
 
 template <typename Inputs>
 class ConstructingGraph {
 public:
-  template <typename F>
-  ConstructingGraph& add(F f, std::string name, SmallVec<std::string, 3> inputs, SmallVec<std::string, 1> outputs = {}) {
+  template <typename F,
+    typename InputNames = SmallVec<std::string, 3>, 
+    typename OutputNames = std::array<std::string, traits::function_num_outputs_v<F>>,
+    typename = std::enable_if_t<std::is_convertible_v<typename InputNames::value_type, std::string>
+                             && std::is_convertible_v<typename OutputNames::value_type, std::string>>>
+  ConstructingGraph& add(F f, std::string name, const InputNames& inputs,
+    OutputNames outputs = detail::generate_names<traits::function_num_outputs_v<F>>())
+  {
     if(!graph::is_valid_name(name)) {
       throw BadConstruction{"Invalid function name: " + name};
     }
@@ -132,30 +167,33 @@ public:
 
     auto any_func = make_any_function(std::move(f));
 
-    if(any_func.output_types().size() != outputs.size() &&
-       !(any_func.output_types().size() == 1 && outputs.size() == 0)) {
+    if(any_func.output_types().size() != outputs.size()) {
       throw BadConstruction{"Incorrect number of output names for " + name + ": " + std::to_string(outputs.size())};
     }
 
     return add_internal(std::move(any_func), std::move(name),
-                        util::map<SmallVec<graph::Term, 3>>(
-                            std::move(inputs),
-                            [this](const std::string& name) {
-                              auto opt_idx = idx_of(name);
-                              if(!opt_idx)
-                                throw BadConstruction{"Input not found: " + std::string(name)};
-                              return *opt_idx;
-                            }),
-                        std::move(outputs));
+        util::map<SmallVec<graph::Term, 3>>(inputs,
+            [this](const std::string& name) {
+              auto opt_idx = idx_of(name);
+              if(!opt_idx)
+                throw BadConstruction{"Input not found: " + std::string(name)};
+              return *opt_idx;
+            }),
+        std::move(outputs));
   }
 
-  template <typename... InnerOutputs, typename... InnerInputs>
+  template <typename... InnerOutputs, typename... InnerInputs,
+    typename InputNames = SmallVec<std::string, 3>, 
+    typename OutputNames = std::array<std::string, sizeof...(InnerOutputs)>,
+    typename = std::enable_if_t<std::is_convertible_v<typename InputNames::value_type, std::string>
+                             && std::is_convertible_v<typename OutputNames::value_type, std::string>>>
   ConstructingGraph& add(const FunctionGraph<std::tuple<InnerOutputs...>, std::tuple<InnerInputs...>>& graph,
-                         std::string name, SmallVec<std::string, 3> inputs, SmallVec<std::string, 3> output_names = {})
+                         std::string name, InputNames inputs,
+                         OutputNames output_names = detail::generate_names<sizeof...(InnerOutputs)>())
   {
     using namespace graph;
 
-    if(sizeof...(InnerOutputs) != output_names.size() && !(sizeof...(InnerOutputs) == 1 && output_names.size() == 0)) {
+    if(sizeof...(InnerOutputs) != output_names.size()) {
       throw BadConstruction{"Incorrect number of output names for " + name + ": " + std::to_string(output_names.size())};
     }
 
@@ -215,8 +253,17 @@ public:
     return *this;
   }
 
-  template <typename... Outputs>
-  FunctionGraph<std::tuple<Outputs...>, Inputs> output(SmallVec<std::string, 3> input_names) {
+  template <typename... Outputs,
+    typename Names = SmallVec<std::string, 1>,
+    typename = std::enable_if_t<std::is_convertible_v<typename Names::value_type, std::string>>>
+  FunctionGraph<std::tuple<Outputs...>, Inputs> outputs(Names input_names) {
+    return outputs_tuple<std::tuple<Outputs...>>(std::move(input_names));
+  }
+
+  template <typename OutputTuple,
+    typename Names = SmallVec<std::string, 1>,
+    typename = std::enable_if_t<std::is_convertible_v<typename Names::value_type, std::string>>>
+  auto outputs_tuple(const Names& input_names) {
     boost::for_each(input_names | boost::adaptors::indexed(), [this](const auto& ele) {
       const auto& name = ele.value();
       auto opt_term = idx_of(name);
@@ -239,9 +286,9 @@ public:
         graph::Term{static_cast<int>(_nodes.size()), static_cast<int>(ele.index())},
         src.no_copy ? PassBy::move : PassBy::copy});
     });
-    _nodes.emplace_back(graph::Sink{{make_type<Outputs>()...}});
+    _nodes.emplace_back(graph::Sink{make_types<SmallVec<Type, 1>, OutputTuple>()});
 
-    return FunctionGraph<std::tuple<Outputs...>, Inputs>(std::move(_nodes));
+    return FunctionGraph<OutputTuple, Inputs>(std::move(_nodes));
   }
 private:
   std::vector<graph::Node> _nodes;
@@ -262,7 +309,6 @@ private:
   }
 
   std::optional<graph::Term> idx_of(const std::string& name) const {
-    
     auto alias_it = _aliases.find(name);
 
     if(alias_it != _aliases.end()) {
@@ -303,8 +349,8 @@ private:
                        static_cast<int>(std::distance(it->output_names.begin(), output_it))};
   }
 
-  ConstructingGraph& add_internal(AnyFunction f, std::string name, SmallVec<graph::Term, 3> inputs,
-                                  SmallVec<std::string, 1> output_names)
+  template <typename Names = SmallVec<std::string, 1>>
+  ConstructingGraph& add_internal(AnyFunction f, std::string name, SmallVec<graph::Term, 3> inputs, Names output_names)
   {
     auto it = std::find_if(_nodes.begin(), _nodes.end(),
                            [&name](const auto& node) { return node.name == name; });
@@ -365,11 +411,85 @@ private:
 
   template <typename... Ts>
   friend ConstructingGraph<std::tuple<Ts...>> make_graph(std::array<std::string, sizeof...(Ts)> names);
+  template <typename Tuple>
+  friend ConstructingGraph<Tuple> make_graph_tuple(std::array<std::string, std::tuple_size_v<Tuple>> names);
 };
+
+template <typename Inputs>
+ConstructingGraph<Inputs> make_graph_tuple(std::array<std::string, std::tuple_size_v<Inputs>> names) {
+  return ConstructingGraph<Inputs>(std::move(names), make_types<SmallVec<Type, 3>, Inputs>());
+}
 
 template <typename... Inputs>
 ConstructingGraph<std::tuple<Inputs...>> make_graph(std::array<std::string, sizeof...(Inputs)> names) {
-  return ConstructingGraph<std::tuple<Inputs...>>(std::move(names), {make_type<Inputs>()...});
+  return make_graph_tuple<std::tuple<Inputs...>>(std::move(names));
+}
+
+
+template <typename Outputs, typename Inputs>
+struct traits::function_traits<FunctionGraph<Outputs, Inputs>> {
+  using return_type = Outputs;
+  using args = Inputs;
+
+  static constexpr std::size_t arity = std::tuple_size_v<args>;
+  static constexpr std::size_t num_outputs = std::tuple_size_v<tuple_wrap_t<return_type>>;
+  static constexpr bool is_const = true;
+};
+
+// Deduction guide
+// template<typename F>
+// explicit FunctionGraph(F) -> FunctionGraph<
+//     traits::tuple_wrap_t<traits::function_return_t<F>>,
+//     traits::function_args_t<F>
+//   >;
+
+// template <typename Outputs, typename Inputs>
+// template <typename F>
+// FunctionGraph<Outputs, Inputs>::FunctionGraph(F f) : _nodes{{
+//     {graph::Source{make_types<SmallVec<Type, 3>, Inputs>()}, "", detail::generate_names<std::tuple_size_v<Inputs>>()},
+//     {graph::FuncNode{make_any_function(std::move(f))}, "func", detail::generate_names<std::tuple_size_v<Outputs>>()},
+//     {graph::Sink{make_types<SmallVec<Type, 1>, Outputs>()}}
+//   }}
+// {
+//   // Create edges from input node to function node
+//   for(int i = 0; i < static_cast<int>(_nodes.front().types().size()); i++) {
+//     _nodes.front().outputs.push_back(graph::Edge{{0, i}, {1, i},
+//       _nodes.front().types()[i].is_ref() ? PassBy::ref : PassBy::move});
+//   }
+
+//   // Create edges from function node to output node
+//   for(int i = 0; i < static_cast<int>(_nodes[1].types().size()); i++) {
+//     _nodes[1].outputs.push_back(graph::Edge{{1, i}, {2, i},
+//       _nodes[1].types()[i].is_ref() ? PassBy::ref : PassBy::move});
+//   }
+// }
+
+/// Create convert arbitrary callable to a function_graph with a single node
+template <typename F>
+auto fg(F f) {
+  return make_graph_tuple<traits::function_args_t<F>>(detail::generate_names<traits::function_num_inputs_v<F>>())
+    .add(f, "f", detail::generate_names<traits::function_num_inputs_v<F>>("."), detail::generate_names<traits::function_num_outputs_v<F>>())
+    .template outputs_tuple<traits::tuple_wrap_t<traits::function_return_t<F>>>(detail::generate_names<traits::function_num_outputs_v<F>>("f."));
+}
+
+// Operator | (only value args)
+// (f1 | f2) -> Args = Args(F1) + Args(F2) - Res(F1)
+//              Res  = Res(F1) + Res(F2) - Args(F1)
+//
+// exceptions: F2 args not returned by F1
+//             F1 res not taken by F2
+template<typename... Inputs1, typename... Inputs2, typename... Outputs1, typename... Outputs2>
+FunctionGraph<std::tuple<Outputs2...>, std::tuple<Inputs1...>> operator|(
+  const FunctionGraph<std::tuple<Outputs1...>, std::tuple<Inputs1...>>& fg1,
+  const FunctionGraph<std::tuple<Outputs2...>, std::tuple<Inputs2...>>& fg2)
+{
+  constexpr bool all_values = (traits::is_decayed_v<Inputs1> && ...) && (traits::is_decayed_v<Inputs2> && ...);
+  static_assert(all_values && std::is_same_v<std::tuple<Outputs1...>, std::tuple<Inputs2...>>);
+
+  return make_graph<Inputs1...>(detail::generate_names<sizeof...(Inputs1)>())
+    .add(fg1, "f1", detail::generate_names<sizeof...(Inputs1)>("."))
+    .add(fg2, "f2", detail::generate_names<sizeof...(Inputs2)>("f1."))
+    .template outputs<Outputs2...>(detail::generate_names<sizeof...(Outputs2)>("f2."));
 }
 
 } // namespace anyf

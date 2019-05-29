@@ -1,10 +1,12 @@
 #ifndef TYPE_H
 #define TYPE_H
 
+#include <array>
 #include <iostream>
 #include <sstream>
 #include <string>
 
+#include <tuple>
 #include <type_traits>
 #include <typeinfo>
 
@@ -17,14 +19,12 @@ class Type;
 std::ostream& operator<<(std::ostream& os, Type const& type);
 
 class Type {
-  constexpr static uint16_t CONST_FLAG = 1 << 0;
-  constexpr static uint16_t REF_FLAG = 1 << 1;
-  constexpr static uint16_t COPY_FLAG = 1 << 2;
-  constexpr static uint16_t MOVE_FLAG = 1 << 3;
+  constexpr static uint8_t CONST_FLAG = 1 << 0;
+  constexpr static uint8_t REF_FLAG = 1 << 1;
+  constexpr static uint8_t COPY_FLAG = 1 << 2;
+  constexpr static uint8_t MOVE_FLAG = 1 << 3;
 
 public:
-  Type() : _type(&typeid(void)), _properties(0) {}
-
   constexpr bool is_const() const { return (_properties & CONST_FLAG) > 0; }
   constexpr bool is_ref() const { return (_properties & REF_FLAG) > 0; }
   constexpr bool is_copy_constructible() const { return (_properties & COPY_FLAG) > 0; }
@@ -42,12 +42,12 @@ public:
 
 private:
   std::type_info const* _type;
-  uint16_t _properties;
+  uint8_t _properties;
 
   template <typename T>
   friend constexpr Type make_type();
 
-  explicit Type(std::type_info const* type, uint16_t properties)
+  explicit Type(std::type_info const* type, uint8_t properties)
       : _type(type), _properties(properties) {}
 };
 
@@ -80,7 +80,7 @@ inline bool operator!=(Type const& x, Type const& y) { return !(x == y); }
 
 template <typename T>
 constexpr Type make_type() {
-  uint16_t properties = 0;
+  uint8_t properties = 0;
 
   if constexpr(std::is_const_v<std::remove_reference_t<T>>)
     properties |= Type::CONST_FLAG;
@@ -92,6 +92,24 @@ constexpr Type make_type() {
     properties |= Type::MOVE_FLAG;
 
   return Type(&typeid(T), properties);
+}
+
+namespace detail {
+template <typename T>
+struct TypeUnwrapper;
+
+template <typename... Types>
+struct TypeUnwrapper<std::tuple<Types...>> {
+  constexpr std::array<Type, sizeof...(Types)> operator()() const {
+    return {make_type<Types>()...};
+  }
+};
+}
+
+template <typename Container, typename Tuple>
+Container make_types() {
+  auto temp = detail::TypeUnwrapper<Tuple>{}();
+  return {temp.begin(), temp.end()};
 }
 
 } // namespace anyf

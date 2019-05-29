@@ -80,7 +80,7 @@ auto create_pipeline(int seed, int element) {
     .add(create_shuffle(seed), "shuffle", {"create"})
     .add(sort_vector, "sort", {"shuffle"})
     .add(get_element(element), "get", {"sort"})
-    .output<int>({"get"});
+    .outputs<int>({"get"});
 }
 
 auto create_graph() {
@@ -100,7 +100,7 @@ auto create_graph() {
       .add(sum, "sum5", {"sum1", "sum2"})
       .add(sum, "sum6", {"sum3", "sum4"})
       .add(sum, "final_sum", {"sum5", "sum6"})
-      .output<int>({"final_sum"});
+      .outputs<int>({"final_sum"});
 }
 
 template <typename Executor, typename Graph>
@@ -139,20 +139,29 @@ void take_ref(const Sentinal& sent) {
 
 } // namespace
 
-BOOST_AUTO_TEST_CASE(example_graph_tbb) {
-  std::cout << "\nExecuting graph with TBB\n\n";
-  execute_graph_with_threads<tbb_executor>(create_graph());
-}
 
 BOOST_AUTO_TEST_CASE(example_graph_seq) {
-  std::cout << "\nExecuting graph Sequentially\n\n";
-  execute_graph_with_threads<sequential_executor>(create_graph());
+  auto g = fg([](int x) { return x;});
+
+  sequential_executor e;
+  int result = std::get<0>(execute_graph(g, e, 10));
+  std::cout << result << std::endl; 
 }
 
-BOOST_AUTO_TEST_CASE(example_graph_task) {
-  std::cout << "\nExecuting graph with custom task system\n\n";
-  execute_graph_with_threads<task_executor>(create_graph());
-}
+// BOOST_AUTO_TEST_CASE(example_graph_tbb) {
+//   std::cout << "\nExecuting graph with TBB\n\n";
+//   execute_graph_with_threads<tbb_executor>(create_graph());
+// }
+
+// BOOST_AUTO_TEST_CASE(example_graph_seq) {
+//   std::cout << "\nExecuting graph Sequentially\n\n";
+//   execute_graph_with_threads<sequential_executor>(create_graph());
+// }
+
+// BOOST_AUTO_TEST_CASE(example_graph_task) {
+//   std::cout << "\nExecuting graph with custom task system\n\n";
+//   execute_graph_with_threads<task_executor>(create_graph());
+// }
 
 // BOOST_AUTO_TEST_CASE(test_graph) {
 //   auto g = make_graph<sentinal, sentinal>({"in1", "[nocopy]in2"})
