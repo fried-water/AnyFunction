@@ -44,14 +44,16 @@ struct Node {
   Node(AnyFunction any_func) : variant(std::move(any_func)) {}
 
   const SmallVecBase<Type>& types() const {
-    return std::visit([](const auto& arg) -> const SmallVecBase<Type>& {
-      using T = std::decay_t<decltype(arg)>;
-      if constexpr (std::is_same_v<T, AnyFunction>) {
-        return arg.output_types();
-      } else {
-        return arg;
-      }
-    }, variant);
+    return std::visit(
+        [](const auto& arg) -> const SmallVecBase<Type>& {
+          using T = std::decay_t<decltype(arg)>;
+          if constexpr(std::is_same_v<T, AnyFunction>) {
+            return arg.output_types();
+          } else {
+            return arg;
+          }
+        },
+        variant);
   }
 };
 
@@ -63,15 +65,14 @@ class ConstructingGraph;
 template <typename Outputs, typename Inputs>
 class FunctionGraph;
 
-template<typename Outputs, typename Inputs>
+template <typename Outputs, typename Inputs>
 class Delayed;
 
 template <typename T>
 class Edge {
-  Edge(std::vector<graph::Node>* nodes, graph::Term term)
-    : nodes{nodes}, term{term} {}
+  Edge(std::vector<graph::Node>* nodes, graph::Term term) : nodes{nodes}, term{term} {}
   Edge(std::vector<graph::Node>* nodes, int arg_idx)
-    : nodes{nodes}, term{static_cast<int>(nodes->size() - 1), arg_idx} {}
+      : nodes{nodes}, term{static_cast<int>(nodes->size() - 1), arg_idx} {}
   std::vector<graph::Node>* nodes;
   graph::Term term;
 
@@ -85,10 +86,12 @@ class Edge {
   friend class ConstructingGraph;
 
   template <typename... Inputs, typename Types, std::size_t... Is>
-  friend void add_edges(const Types& types, std::vector<graph::Node>&, std::tuple<Edge<Inputs>...>, std::index_sequence<Is...>);
+  friend void add_edges(const Types& types, std::vector<graph::Node>&, std::tuple<Edge<Inputs>...>,
+                        std::index_sequence<Is...>);
 
   template <typename... Outputs, std::size_t... Is>
-  friend std::tuple<Edge<Outputs>...> output_edges(std::vector<graph::Node>*, std::index_sequence<Is...>);
+  friend std::tuple<Edge<Outputs>...> output_edges(std::vector<graph::Node>*,
+                                                   std::index_sequence<Is...>);
 };
 
 template <typename... Outputs, typename... Inputs>
@@ -116,20 +119,25 @@ constexpr PassBy pass_by_of(const Type& type) {
 }
 
 template <typename... Outputs, std::size_t... Is>
-std::tuple<Edge<Outputs>...> output_edges(std::vector<graph::Node>* nodes, std::index_sequence<Is...>) {
+std::tuple<Edge<Outputs>...> output_edges(std::vector<graph::Node>* nodes,
+                                          std::index_sequence<Is...>) {
   return std::tuple(Edge<Outputs>{nodes, Is}...);
 }
 
 template <typename... Outputs, std::size_t... Is>
-std::tuple<Edge<Outputs>...>
-output_edges(std::vector<graph::Node>* nodes, const std::array<graph::Term, sizeof...(Outputs)>& terms, std::index_sequence<Is...>) {
+std::tuple<Edge<Outputs>...> output_edges(std::vector<graph::Node>* nodes,
+                                          const std::array<graph::Term, sizeof...(Outputs)>& terms,
+                                          std::index_sequence<Is...>) {
   return std::tuple(Edge<Outputs>{nodes, terms[Is]}...);
 }
 
 template <typename... Inputs, typename Types, std::size_t... Is>
-void add_edges(const Types& types, std::vector<graph::Node>& nodes, std::tuple<Edge<Inputs>...> edges, std::index_sequence<Is...>) {
+void add_edges(const Types& types, std::vector<graph::Node>& nodes,
+               std::tuple<Edge<Inputs>...> edges, std::index_sequence<Is...>) {
   (nodes[std::get<Is>(edges).term.node_id].outputs.push_back(
-    graph::NodeEdge{std::get<Is>(edges).term.arg_idx, graph::Term{static_cast<int>(nodes.size()), Is}, pass_by_of(types[Is])}), ...);
+       graph::NodeEdge{std::get<Is>(edges).term.arg_idx,
+                       graph::Term{static_cast<int>(nodes.size()), Is}, pass_by_of(types[Is])}),
+   ...);
 }
 
 template <typename Inputs>
@@ -139,20 +147,21 @@ class ConstructingGraph {
 
   template <typename... Ts>
   friend std::tuple<ConstructingGraph<std::tuple<Ts...>>, Edge<Ts>...> make_graph();
+
 public:
   const std::vector<graph::Node>& nodes() const { return *_nodes; }
 
   template <typename... Outputs>
   FunctionGraph<std::tuple<Outputs...>, Inputs> outputs(Edge<Outputs>... edges) && {
     assert(((edges.nodes == _nodes.get()) && ...)); // all edges must come from this graph
-    add_edges(std::array<Type, sizeof...(Outputs)>{make_type<Outputs>()...},
-      *_nodes, std::tuple(std::move(edges)...), std::make_index_sequence<sizeof...(Outputs)>());
-    _nodes->push_back ({{make_type<Outputs>()...}});
+    add_edges(std::array<Type, sizeof...(Outputs)>{make_type<Outputs>()...}, *_nodes,
+              std::tuple(std::move(edges)...), std::make_index_sequence<sizeof...(Outputs)>());
+    _nodes->push_back({{make_type<Outputs>()...}});
     return FunctionGraph<std::tuple<Outputs...>, Inputs>{std::move(*_nodes)};
   }
 };
 
-template<typename... Outputs, typename... Inputs>
+template <typename... Outputs, typename... Inputs>
 class Delayed<std::tuple<Outputs...>, std::tuple<Inputs...>> {
   static_assert(sizeof...(Inputs) > 0);
 
@@ -161,8 +170,9 @@ class Delayed<std::tuple<Outputs...>, std::tuple<Inputs...>> {
   static auto add_to_graph(AnyFunction any_function, Edge<Inputs>... edges) {
     assert((edges.nodes == ...)); // all edges must come from the same graph
     std::vector<graph::Node>* nodes = std::get<0>(std::tie(edges...)).nodes;
-    add_edges(any_function.input_types(), *nodes, std::tuple(std::move(edges)...), std::make_index_sequence<sizeof...(Inputs)>());
-    nodes->emplace_back(std::move(any_function)/*, TODO no_copy */);
+    add_edges(any_function.input_types(), *nodes, std::tuple(std::move(edges)...),
+              std::make_index_sequence<sizeof...(Inputs)>());
+    nodes->emplace_back(std::move(any_function) /*, TODO no_copy */);
 
     if constexpr(sizeof...(Outputs) == 1) {
       return Edge<std::tuple_element_t<0, std::tuple<Outputs...>>>(nodes, 0);
@@ -170,23 +180,22 @@ class Delayed<std::tuple<Outputs...>, std::tuple<Inputs...>> {
       return output_edges<Outputs...>(nodes, std::make_index_sequence<sizeof...(Outputs)>());
     }
   }
+
 public:
-  template<typename F>
+  template <typename F>
   Delayed(F f) : _any_function(make_any_function(std::move(f))) {}
 
   auto operator()(Edge<Inputs>... inputs) && {
     return add_to_graph(std::move(_any_function), inputs...);
   }
 
-  auto operator()(Edge<Inputs>... inputs) const& {
-    return add_to_graph(_any_function, inputs...);
-  }
+  auto operator()(Edge<Inputs>... inputs) const& { return add_to_graph(_any_function, inputs...); }
 };
 
-template<typename F>
+template <typename F>
 auto fg(F f) {
-  return Delayed<traits::tuple_wrap_t<traits::function_return_t<F>>, 
-    traits::tuple_map_t<std::decay, traits::function_args_t<F>>>{std::move(f)};
+  return Delayed<traits::tuple_wrap_t<traits::function_return_t<F>>,
+                 traits::tuple_map_t<std::decay, traits::function_args_t<F>>>{std::move(f)};
 }
 
 template <typename... Inputs>
@@ -195,7 +204,9 @@ std::tuple<ConstructingGraph<std::tuple<Inputs...>>, Edge<Inputs>...> make_graph
   ConstructingGraph<std::tuple<Inputs...>> g;
   auto nodes = g._nodes.get();
   nodes->push_back({{make_type<Inputs>()...}});
-  return std::tuple_cat(std::tuple(std::move(g)), output_edges<Inputs...>(nodes, std::make_index_sequence<sizeof...(Inputs)>()));
+  return std::tuple_cat(
+      std::tuple(std::move(g)),
+      output_edges<Inputs...>(nodes, std::make_index_sequence<sizeof...(Inputs)>()));
 }
 
 template <typename... Outputs, typename... Inputs>
@@ -218,9 +229,7 @@ FunctionGraph<std::tuple<Outputs...>, std::tuple<Inputs...>>::operator()(Edge<In
     for(int j = 0; j < i; j++) {
       for(const NodeEdge& edge : nodes()[j].outputs) {
         if(edge.dst.node_id == i) {
-          Term src = j == 0 
-            ? inputs[edge.src_arg]
-            : Term{j + index_offset, edge.src_arg};
+          Term src = j == 0 ? inputs[edge.src_arg] : Term{j + index_offset, edge.src_arg};
 
           Term dst{i + index_offset, edge.dst.arg_idx};
 
@@ -243,7 +252,8 @@ FunctionGraph<std::tuple<Outputs...>, std::tuple<Inputs...>>::operator()(Edge<In
   if constexpr(sizeof...(Outputs) == 1) {
     return Edge<std::tuple_element_t<0, std::tuple<Outputs...>>>(other_nodes, outputs[0]);
   } else {
-    return output_edges<Outputs...>(other_nodes, outputs, std::make_index_sequence<sizeof...(Outputs)>());
+    return output_edges<Outputs...>(other_nodes, outputs,
+                                    std::make_index_sequence<sizeof...(Outputs)>());
   }
 }
 

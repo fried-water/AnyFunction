@@ -9,22 +9,22 @@ namespace anyf {
 namespace traits {
 
 template <typename T>
-using is_decayed = std::conditional_t<std::is_same_v<T, std::decay_t<T>>,
-  std::true_type, std::false_type>;
+using is_decayed =
+    std::conditional_t<std::is_same_v<T, std::decay_t<T>>, std::true_type, std::false_type>;
 
 template <typename T>
 constexpr bool is_decayed_v = is_decayed<T>::value;
 
 template <typename T>
-using is_const_ref = std::conditional_t<std::is_same_v<T, const std::decay_t<T>&>,
-  std::true_type, std::false_type>;
+using is_const_ref =
+    std::conditional_t<std::is_same_v<T, const std::decay_t<T>&>, std::true_type, std::false_type>;
 
 template <typename T>
 constexpr bool is_const_ref_v = is_const_ref<T>::value;
 
 template <typename T>
-using is_decayed_or_cref = std::conditional_t<is_decayed_v<T> || is_const_ref_v<T>,
-  std::true_type, std::false_type>;
+using is_decayed_or_cref =
+    std::conditional_t<is_decayed_v<T> || is_const_ref_v<T>, std::true_type, std::false_type>;
 
 template <typename T>
 struct is_tuple : std::false_type {};
@@ -67,7 +67,6 @@ struct tuple_any_of<Pred, std::tuple<Ts...>> {
 
 template <template <typename> typename Pred, typename Tuple>
 constexpr bool tuple_any_of_v = tuple_any_of<Pred, Tuple>::value;
-
 
 template <template <typename> typename, typename>
 struct tuple_map;
@@ -119,7 +118,7 @@ template <typename Tuple>
 using tuple_drop_first_t = typename tuple_drop_first<Tuple>::type;
 
 // If T is a tuple, T, otherwise std::tuple<T>
-template<typename T>
+template <typename T>
 using tuple_wrap_t = std::conditional_t<is_tuple_v<T>, T, std::tuple<T>>;
 
 template <typename>
@@ -175,6 +174,6 @@ template <typename F>
 constexpr std::size_t function_num_inputs_v = function_traits<F>::arity;
 
 } // namespace traits
-} // namespace tuple_any_of
+} // namespace anyf
 
 #endif

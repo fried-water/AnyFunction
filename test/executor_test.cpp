@@ -47,34 +47,27 @@ std::vector<int> sort_vector(std::vector<int> vec) {
 
 int sum(int x, int y) { return x + y; }
 
-
 auto create_pipeline(int seed, int element) {
   auto create = fg(create_vector);
   auto shuffle = fg(create_shuffle(seed));
   auto sort = fg(sort_vector);
   auto get_ele = fg(get_element(element));
 
-  auto [g, size] =  make_graph<int>();
+  auto [g, size] = make_graph<int>();
   return std::move(g).outputs<int>(get_ele(sort(shuffle(create(size)))));
 }
 
 auto create_graph() {
-  auto [g, size] =  make_graph<int>();
+  auto [g, size] = make_graph<int>();
 
-  std::array<Edge<int>, 8> ps = {
-    create_pipeline(0, 10)(size),
-    create_pipeline(1, 10)(size),
-    create_pipeline(2, 10)(size),
-    create_pipeline(3, 10)(size),
-    create_pipeline(4, 10)(size),
-    create_pipeline(5, 10)(size),
-    create_pipeline(6, 10)(size),
-    create_pipeline(7, 10)(size)
-  };
+  std::array<Edge<int>, 8> ps = {create_pipeline(0, 10)(size), create_pipeline(1, 10)(size),
+                                 create_pipeline(2, 10)(size), create_pipeline(3, 10)(size),
+                                 create_pipeline(4, 10)(size), create_pipeline(5, 10)(size),
+                                 create_pipeline(6, 10)(size), create_pipeline(7, 10)(size)};
 
   auto fg_sum = fg(sum);
   return std::move(g).outputs<int>(fg_sum(fg_sum(fg_sum(ps[0], ps[1]), fg_sum(ps[2], ps[3])),
-    fg_sum(fg_sum(ps[4], ps[5]), fg_sum(ps[6], ps[7]))));
+                                          fg_sum(fg_sum(ps[4], ps[5]), fg_sum(ps[6], ps[7]))));
 }
 
 template <typename Executor, typename Graph>
@@ -89,9 +82,7 @@ void execute_graph_with_threads(Graph g) {
     uint64_t result = std::get<0>(execute_graph(g, executor, size));
     auto t1 = std::chrono::steady_clock::now();
     std::cout << num_threads << " THREADS: result is " << result << " after "
-              << std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0)
-                     .count()
-              << "us\n";
+              << std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count() << "us\n";
   }
 }
 
@@ -108,13 +99,12 @@ void take_ref(const Sentinal& sent) {
 
 } // namespace
 
-
 // BOOST_AUTO_TEST_CASE(example_graph_seq) {
 //   auto g = fg([](int x) { return x;});
 
 //   sequential_executor e;
 //   int result = std::get<0>(execute_graph(g, e, 10));
-//   std::cout << result << std::endl; 
+//   std::cout << result << std::endl;
 // }
 
 BOOST_AUTO_TEST_CASE(example_graph_tbb) {

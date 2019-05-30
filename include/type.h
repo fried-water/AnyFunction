@@ -104,7 +104,7 @@ struct TypeUnwrapper<std::tuple<Types...>> {
     return {make_type<Types>()...};
   }
 };
-}
+} // namespace detail
 
 template <typename Container, typename Tuple>
 Container make_types() {

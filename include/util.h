@@ -17,10 +17,10 @@ template <typename T>
 using SmallVecBase = boost::container::small_vector_base<T>;
 
 struct Identity {
-  template<typename T>
+  template <typename T>
   T operator()(T t) const {
     return t;
-  } 
+  }
 };
 
 namespace util {
