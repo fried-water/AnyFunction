@@ -184,13 +184,12 @@ execute_graph(const FunctionGraph<std::tuple<Outputs...>, std::tuple<std::decay_
       util::make_vector<SmallVec<std::any, 3>>(std::forward<Inputs>(inputs)...);
 
   // Create function tasks
-  std::transform(g.nodes().begin() + 1, g.nodes().end() - 1, std::back_inserter(tasks),
-                 [&](const auto& node) {
-                   assert(std::holds_alternative<AnyFunction>(node.variant));
-                   const AnyFunction& func = std::get<AnyFunction>(node.variant);
-                   return std::make_unique<FunctionTask>(func, func.input_types().size(),
-                                                         func.output_types().size());
-                 });
+  std::transform(
+      g.nodes().begin() + 1, g.nodes().end() - 1, std::back_inserter(tasks), [&](const auto& node) {
+        assert(node.func);
+        return std::make_unique<FunctionTask>(*node.func, node.func->input_types().size(),
+                                              node.func->output_types().size());
+      });
 
   // Create output task, sizeof(Outputs) + 1 so it never runs
   tasks.push_back(std::make_unique<FunctionTask>(std::nullopt, sizeof...(Outputs) + 1, 0));

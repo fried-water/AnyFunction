@@ -37,24 +37,11 @@ struct NodeEdge {
 };
 
 struct Node {
-  std::variant<SmallVec<Type, 3>, AnyFunction> variant;
+  std::optional<AnyFunction> func;
   SmallVec<NodeEdge, 2> outputs;
 
-  Node(SmallVec<Type, 3> types) : variant(std::move(types)) {}
-  Node(AnyFunction any_func) : variant(std::move(any_func)) {}
-
-  const SmallVecBase<Type>& types() const {
-    return std::visit(
-        [](const auto& arg) -> const SmallVecBase<Type>& {
-          using T = std::decay_t<decltype(arg)>;
-          if constexpr(std::is_same_v<T, AnyFunction>) {
-            return arg.output_types();
-          } else {
-            return arg;
-          }
-        },
-        variant);
-  }
+  Node() = default;
+  Node(AnyFunction any_func) : func(std::move(any_func)) {}
 };
 
 } // namespace graph
@@ -156,7 +143,7 @@ public:
     assert(((edges.nodes == _nodes.get()) && ...)); // all edges must come from this graph
     add_edges(std::array<Type, sizeof...(Outputs)>{make_type<Outputs>()...}, *_nodes,
               std::tuple(std::move(edges)...), std::make_index_sequence<sizeof...(Outputs)>());
-    _nodes->push_back({{make_type<Outputs>()...}});
+    _nodes->emplace_back();
     return FunctionGraph<std::tuple<Outputs...>, Inputs>{std::move(*_nodes)};
   }
 };
@@ -203,7 +190,7 @@ std::tuple<ConstructingGraph<std::tuple<Inputs...>>, Edge<Inputs>...> make_graph
   static_assert(sizeof...(Inputs) > 0);
   ConstructingGraph<std::tuple<Inputs...>> g;
   auto nodes = g._nodes.get();
-  nodes->push_back({{make_type<Inputs>()...}});
+  nodes->emplace_back();
   return std::tuple_cat(
       std::tuple(std::move(g)),
       output_edges<Inputs...>(nodes, std::make_index_sequence<sizeof...(Inputs)>()));
@@ -223,8 +210,8 @@ FunctionGraph<std::tuple<Outputs...>, std::tuple<Inputs...>>::operator()(Edge<In
   for(int i = 1; i < static_cast<int>(nodes().size()) - 1; i++) {
     const Node& node = nodes()[i];
 
-    assert(std::holds_alternative<AnyFunction>(node.variant));
-    other_nodes->emplace_back(std::get<AnyFunction>(node.variant));
+    assert(node.func);
+    other_nodes->emplace_back(*node.func);
 
     for(int j = 0; j < i; j++) {
       for(const NodeEdge& edge : nodes()[j].outputs) {

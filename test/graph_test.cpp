@@ -15,16 +15,15 @@ int by2(const int& x) { return x * 2; }
 auto sum(int x, int y) { return x + y; }
 
 bool compare_nodes(const Node& expected, const Node& actual) {
-  return expected.types() == actual.types() && expected.outputs == actual.outputs;
+  return expected.outputs == actual.outputs;
 }
 
 BOOST_AUTO_TEST_CASE(simple_graph) {
   auto [con_g, in1, in2] = make_graph<int, int>();
   auto g = std::move(con_g).outputs<int>(fg(sum)(fg(cidentity)(in1), in2));
 
-  std::vector<Node> expected_nodes{Node{{make_type<int>(), make_type<int>()}},
-                                   Node{make_any_function(identity)}, Node{make_any_function(sum)},
-                                   Node{{make_type<int>()}}};
+  std::vector<Node> expected_nodes{Node{}, Node{make_any_function(identity)},
+                                   Node{make_any_function(sum)}, Node{}};
 
   expected_nodes[0].outputs = {{0, {1, 0}, PassBy::ref}, {1, {2, 1}, PassBy::copy}};
   expected_nodes[1].outputs = {{0, {2, 0}, PassBy::copy}};
@@ -57,12 +56,12 @@ BOOST_AUTO_TEST_CASE(inner_graph) {
 
   auto g = std::move(con_g).outputs<int>(inner_g(id, cid));
 
-  std::vector<Node> expected_nodes{Node{{make_type<int>(), make_type<int>()}},
+  std::vector<Node> expected_nodes{Node{},
                                    Node{make_any_function(identity)},
                                    Node{make_any_function(cidentity)},
                                    Node{make_any_function(cidentity)},
                                    Node{make_any_function(sum)},
-                                   Node{{make_type<int>()}}};
+                                   Node{}};
 
   expected_nodes[0].outputs = {{0, {1, 0}, PassBy::copy}, {1, {2, 0}, PassBy::ref}};
   expected_nodes[1].outputs = {{0, {3, 0}, PassBy::ref}};
