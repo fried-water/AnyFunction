@@ -4,7 +4,7 @@
 namespace anyf {
 
 struct sequential_executor {
-  sequential_executor() {}
+  sequential_executor() = default;
   // To match other executor constructors that take num_threads
   sequential_executor(int) {}
 

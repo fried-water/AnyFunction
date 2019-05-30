@@ -179,9 +179,9 @@ std::tuple<Outputs...> execute_graph(const FunctionGraph<std::tuple<Outputs...>,
 
   // Create function tasks
   std::transform(g.nodes().begin() + 1, g.nodes().end() - 1, std::back_inserter(tasks), [&](const auto& node) {
-    assert(std::holds_alternative<FuncNode>(node.variant));
-    const FuncNode& func_node = std::get<FuncNode>(node.variant);
-    return std::make_unique<FunctionTask>(func_node.func, func_node.func.input_types().size(), func_node.func.output_types().size());
+    assert(std::holds_alternative<AnyFunction>(node.variant));
+    const AnyFunction& func = std::get<AnyFunction>(node.variant);
+    return std::make_unique<FunctionTask>(func, func.input_types().size(), func.output_types().size());
   });
 
   // Create output task, sizeof(Outputs) + 1 so it never runs
@@ -192,8 +192,8 @@ std::tuple<Outputs...> execute_graph(const FunctionGraph<std::tuple<Outputs...>,
     const auto& node = boost::get<0>(tuple);
     auto& task = boost::get<1>(tuple);
 
-    for(const Edge&  edge : node.outputs) {
-      ParameterEdge parameter_edge{tasks[edge.dst.node_id].get(), edge.src.arg_idx, edge.dst.arg_idx};
+    for(const NodeEdge& edge : node.outputs) {
+      ParameterEdge parameter_edge{tasks[edge.dst.node_id].get(), edge.src_arg, edge.dst.arg_idx};
       if(edge.pb == PassBy::ref) {
         task->output_refs.push_back(parameter_edge);
       } else if(edge.pb == PassBy::copy) {

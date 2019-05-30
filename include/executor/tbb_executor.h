@@ -14,7 +14,7 @@ class tbb_executor {
   int _next_task_group = 0;
 
 public:
-  tbb_executor() {}
+  tbb_executor() = default;
   tbb_executor(unsigned num_threads) : _scheduler(num_threads) {}
 
   template <typename F>

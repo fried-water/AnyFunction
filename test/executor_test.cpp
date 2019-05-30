@@ -47,79 +47,48 @@ std::vector<int> sort_vector(std::vector<int> vec) {
 
 int sum(int x, int y) { return x + y; }
 
-// any_function::func_type timing_decorator(std::string name,
-//                                          any_function::func_type func) {
-
-//   return [name = std::move(name),
-//           func = std::move(func)](any_function::vec_ptr_type inputs) {
-//     auto t0 = std::chrono::steady_clock::now();
-//     std::any result = func(std::move(inputs));
-//     auto t1 = std::chrono::steady_clock::now();
-
-//     std::cout << name << " took "
-//               << std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0)
-//                      .count()
-//               << "us\n";
-
-//     return result;
-//   };
-// }
-
-// any_function::func_type print_decorator(std::string name,
-//                                         any_function::func_type func) {
-//   return [name = std::move(name),
-//           func = std::move(func)](any_function::vec_ptr_type inputs) {
-//     std::cout << "Running " << name << "\n";
-//     return func(std::move(inputs));
-//   };
-// }
 
 auto create_pipeline(int seed, int element) {
-  return make_graph<int>({"size"})
-    .add(create_vector, "create", {".size"})
-    .add(create_shuffle(seed), "shuffle", {"create"})
-    .add(sort_vector, "sort", {"shuffle"})
-    .add(get_element(element), "get", {"sort"})
-    .outputs<int>({"get"});
+  auto create = fg(create_vector);
+  auto shuffle = fg(create_shuffle(seed));
+  auto sort = fg(sort_vector);
+  auto get_ele = fg(get_element(element));
+
+  auto [g, size] =  make_graph<int>();
+  return std::move(g).outputs<int>(get_ele(sort(shuffle(create(size)))));
 }
 
 auto create_graph() {
-  return make_graph<int>({"size"})
-      .add(create_pipeline(0, 10), "pipe1", {".size"})
-      .add(create_pipeline(1, 10), "pipe2", {".size"})
-      .add(create_pipeline(2, 10), "pipe3", {".size"})
-      .add(create_pipeline(3, 10), "pipe4", {".size"})
-      .add(create_pipeline(4, 10), "pipe5", {".size"})
-      .add(create_pipeline(5, 10), "pipe6", {".size"})
-      .add(create_pipeline(6, 10), "pipe7", {".size"})
-      .add(create_pipeline(7, 10), "pipe8", {".size"})
-      .add(sum, "sum1", {"pipe1", "pipe2"})
-      .add(sum, "sum2", {"pipe3", "pipe4"})
-      .add(sum, "sum3", {"pipe5", "pipe6"})
-      .add(sum, "sum4", {"pipe7", "pipe8"})
-      .add(sum, "sum5", {"sum1", "sum2"})
-      .add(sum, "sum6", {"sum3", "sum4"})
-      .add(sum, "final_sum", {"sum5", "sum6"})
-      .outputs<int>({"final_sum"});
+  auto [g, size] =  make_graph<int>();
+
+  std::array<Edge<int>, 8> ps = {
+    create_pipeline(0, 10)(size),
+    create_pipeline(1, 10)(size),
+    create_pipeline(2, 10)(size),
+    create_pipeline(3, 10)(size),
+    create_pipeline(4, 10)(size),
+    create_pipeline(5, 10)(size),
+    create_pipeline(6, 10)(size),
+    create_pipeline(7, 10)(size)
+  };
+
+  auto fg_sum = fg(sum);
+  return std::move(g).outputs<int>(fg_sum(fg_sum(fg_sum(ps[0], ps[1]), fg_sum(ps[2], ps[3])),
+    fg_sum(fg_sum(ps[4], ps[5]), fg_sum(ps[6], ps[7]))));
 }
 
 template <typename Executor, typename Graph>
 void execute_graph_with_threads(Graph g) {
   int size = 100'000;
-  int max_threads = 4;
+  int max_threads = 8;
 
   for(int num_threads = 1; num_threads <= max_threads; num_threads++) {
     Executor executor(num_threads);
 
-    auto decorated_graph = g;
-    // .decorate(timing_decorator);
-    // .decorate(print_decorator);
-
     auto t0 = std::chrono::steady_clock::now();
-    std::cout << "--------- " << num_threads << " THREADS --------\n";
-    uint64_t result = std::get<0>(execute_graph(decorated_graph, executor, size));
+    uint64_t result = std::get<0>(execute_graph(g, executor, size));
     auto t1 = std::chrono::steady_clock::now();
-    std::cout << "result is " << result << " after "
+    std::cout << num_threads << " THREADS: result is " << result << " after "
               << std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0)
                      .count()
               << "us\n";
@@ -140,28 +109,28 @@ void take_ref(const Sentinal& sent) {
 } // namespace
 
 
-BOOST_AUTO_TEST_CASE(example_graph_seq) {
-  auto g = fg([](int x) { return x;});
+// BOOST_AUTO_TEST_CASE(example_graph_seq) {
+//   auto g = fg([](int x) { return x;});
 
-  sequential_executor e;
-  int result = std::get<0>(execute_graph(g, e, 10));
-  std::cout << result << std::endl; 
+//   sequential_executor e;
+//   int result = std::get<0>(execute_graph(g, e, 10));
+//   std::cout << result << std::endl; 
+// }
+
+BOOST_AUTO_TEST_CASE(example_graph_tbb) {
+  std::cout << "\nExecuting graph with TBB\n\n";
+  execute_graph_with_threads<tbb_executor>(create_graph());
 }
 
-// BOOST_AUTO_TEST_CASE(example_graph_tbb) {
-//   std::cout << "\nExecuting graph with TBB\n\n";
-//   execute_graph_with_threads<tbb_executor>(create_graph());
-// }
+BOOST_AUTO_TEST_CASE(example_graph_seq) {
+  std::cout << "\nExecuting graph Sequentially\n\n";
+  execute_graph_with_threads<sequential_executor>(create_graph());
+}
 
-// BOOST_AUTO_TEST_CASE(example_graph_seq) {
-//   std::cout << "\nExecuting graph Sequentially\n\n";
-//   execute_graph_with_threads<sequential_executor>(create_graph());
-// }
-
-// BOOST_AUTO_TEST_CASE(example_graph_task) {
-//   std::cout << "\nExecuting graph with custom task system\n\n";
-//   execute_graph_with_threads<task_executor>(create_graph());
-// }
+BOOST_AUTO_TEST_CASE(example_graph_task) {
+  std::cout << "\nExecuting graph with custom task system\n\n";
+  execute_graph_with_threads<task_executor>(create_graph());
+}
 
 // BOOST_AUTO_TEST_CASE(test_graph) {
 //   auto g = make_graph<sentinal, sentinal>({"in1", "[nocopy]in2"})
