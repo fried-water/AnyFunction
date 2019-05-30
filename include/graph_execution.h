@@ -170,7 +170,8 @@ void execute_task(Executor& executor, FunctionTask& task, TaskGroupId id) {
 }
 
 template <typename... Outputs, typename Executor, typename... Inputs>
-std::tuple<Outputs...>
+std::conditional_t<sizeof...(Outputs) == 1, std::tuple_element_t<0, std::tuple<Outputs...>>,
+                   std::tuple<Outputs...>>
 execute_graph(const FunctionGraph<std::tuple<Outputs...>, std::tuple<std::decay_t<Inputs>...>>& g,
               Executor& executor, Inputs&&... inputs) {
   using namespace anyf::graph;
@@ -234,7 +235,11 @@ execute_graph(const FunctionGraph<std::tuple<Outputs...>, std::tuple<std::decay_
 
   executor.wait_for_task_group(task_group_id);
 
-  return util::vec_to_tuple<std::tuple<Outputs...>>(std::move(tasks.back()->input_vals));
+  if constexpr(sizeof...(Outputs) == 1) {
+    return std::any_cast<Outputs...>(std::move(tasks.back()->input_vals[0]));
+  } else {
+    return util::vec_to_tuple<std::tuple<Outputs...>>(std::move(tasks.back()->input_vals));
+  }
 }
 
 } // namespace anyf

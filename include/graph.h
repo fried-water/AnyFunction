@@ -46,40 +46,17 @@ struct Node {
 
 } // namespace graph
 
+template <typename T>
+struct Edge {
+  std::vector<graph::Node>* nodes;
+  graph::Term term;
+};
+
 template <typename Inputs>
 class ConstructingGraph;
 
 template <typename Outputs, typename Inputs>
 class FunctionGraph;
-
-template <typename Outputs, typename Inputs>
-class Delayed;
-
-template <typename T>
-class Edge {
-  Edge(std::vector<graph::Node>* nodes, graph::Term term) : nodes{nodes}, term{term} {}
-  Edge(std::vector<graph::Node>* nodes, int arg_idx)
-      : nodes{nodes}, term{static_cast<int>(nodes->size() - 1), arg_idx} {}
-  std::vector<graph::Node>* nodes;
-  graph::Term term;
-
-  template <typename Outputs, typename Inputs>
-  friend class FunctionGraph;
-
-  template <typename Outputs, typename Inputs>
-  friend class Delayed;
-
-  template <typename Inputs>
-  friend class ConstructingGraph;
-
-  template <typename... Inputs, typename Types, std::size_t... Is>
-  friend void add_edges(const Types& types, std::vector<graph::Node>&, std::tuple<Edge<Inputs>...>,
-                        std::index_sequence<Is...>);
-
-  template <typename... Outputs, std::size_t... Is>
-  friend std::tuple<Edge<Outputs>...> output_edges(std::vector<graph::Node>*,
-                                                   std::index_sequence<Is...>);
-};
 
 template <typename... Outputs, typename... Inputs>
 class FunctionGraph<std::tuple<Outputs...>, std::tuple<Inputs...>> {
@@ -108,7 +85,7 @@ constexpr PassBy pass_by_of(const Type& type) {
 template <typename... Outputs, std::size_t... Is>
 std::tuple<Edge<Outputs>...> output_edges(std::vector<graph::Node>* nodes,
                                           std::index_sequence<Is...>) {
-  return std::tuple(Edge<Outputs>{nodes, Is}...);
+  return std::tuple(Edge<Outputs>{nodes, {static_cast<int>(nodes->size() - 1), Is}}...);
 }
 
 template <typename... Outputs, std::size_t... Is>
@@ -148,6 +125,9 @@ public:
   }
 };
 
+template <typename Outputs, typename Inputs>
+class Delayed;
+
 template <typename... Outputs, typename... Inputs>
 class Delayed<std::tuple<Outputs...>, std::tuple<Inputs...>> {
   static_assert(sizeof...(Inputs) > 0);
@@ -162,7 +142,8 @@ class Delayed<std::tuple<Outputs...>, std::tuple<Inputs...>> {
     nodes->emplace_back(std::move(any_function) /*, TODO no_copy */);
 
     if constexpr(sizeof...(Outputs) == 1) {
-      return Edge<std::tuple_element_t<0, std::tuple<Outputs...>>>(nodes, 0);
+      return Edge<std::tuple_element_t<0, std::tuple<Outputs...>>>{
+          nodes, {static_cast<int>(nodes->size() - 1), 0}};
     } else {
       return output_edges<Outputs...>(nodes, std::make_index_sequence<sizeof...(Outputs)>());
     }
@@ -237,7 +218,7 @@ FunctionGraph<std::tuple<Outputs...>, std::tuple<Inputs...>>::operator()(Edge<In
   }
 
   if constexpr(sizeof...(Outputs) == 1) {
-    return Edge<std::tuple_element_t<0, std::tuple<Outputs...>>>(other_nodes, outputs[0]);
+    return Edge<std::tuple_element_t<0, std::tuple<Outputs...>>>{other_nodes, outputs[0]};
   } else {
     return output_edges<Outputs...>(other_nodes, outputs,
                                     std::make_index_sequence<sizeof...(Outputs)>());

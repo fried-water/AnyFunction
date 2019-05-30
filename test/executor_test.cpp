@@ -79,7 +79,7 @@ void execute_graph_with_threads(Graph g) {
     Executor executor(num_threads);
 
     auto t0 = std::chrono::steady_clock::now();
-    uint64_t result = std::get<0>(execute_graph(g, executor, size));
+    uint64_t result = execute_graph(g, executor, size);
     auto t1 = std::chrono::steady_clock::now();
     std::cout << num_threads << " THREADS: result is " << result << " after "
               << std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count() << "us\n";

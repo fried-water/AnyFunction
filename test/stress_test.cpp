@@ -63,7 +63,7 @@ BOOST_AUTO_TEST_CASE(stress_test) {
   t0 = std::chrono::steady_clock::now();
   int result;
   for(int i = 0; i < num_executions; i++) {
-    result = std::get<0>(execute_graph(g, executor, 1));
+    result = execute_graph(g, executor, 1);
   }
   t1 = std::chrono::steady_clock::now();
 
