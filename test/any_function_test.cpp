@@ -32,9 +32,9 @@ void many_args(std::tuple<>, const std::string, char const&){};
 }; // namespace
 
 BOOST_AUTO_TEST_CASE(test_any_function_return_types) {
-  auto void_func = make_any_function(void_fp);
-  auto single_func = make_any_function(simple_fp);
-  auto tuple_func = make_any_function(tuple_fp);
+  auto void_func = AnyFunction(void_fp);
+  auto single_func = AnyFunction(simple_fp);
+  auto tuple_func = AnyFunction(tuple_fp);
 
   BOOST_CHECK(boost::equal(std::vector<Type>{}, void_func.output_types()));
   BOOST_CHECK(boost::equal(std::vector<Type>{make_type<int>()}, single_func.output_types()));
@@ -48,9 +48,9 @@ BOOST_AUTO_TEST_CASE(test_any_function_return_types) {
 }
 
 BOOST_AUTO_TEST_CASE(test_any_function_input_types) {
-  auto no_args_func = make_any_function(no_args);
-  auto one_arg_func = make_any_function(one_arg);
-  auto many_args_func = make_any_function(many_args);
+  auto no_args_func = AnyFunction(no_args);
+  auto one_arg_func = AnyFunction(one_arg);
+  auto many_args_func = AnyFunction(many_args);
 
   BOOST_CHECK(boost::equal(std::vector<Type>{}, no_args_func.input_types()));
   BOOST_CHECK(boost::equal(std::vector<Type>{make_type<int>()}, one_arg_func.input_types()));
@@ -63,7 +63,7 @@ bool valid_exception(std::bad_any_cast const&) { return true; }
 bool valid_exception(BadInvocation const&) { return true; }
 
 BOOST_AUTO_TEST_CASE(test_any_function_incorrect_args) {
-  auto func = make_any_function([](int) {});
+  auto func = AnyFunction([](int) {});
 
   BOOST_CHECK_EXCEPTION(invoke_with_values(func, 'a'), std::bad_any_cast, valid_exception);
 
@@ -73,19 +73,19 @@ BOOST_AUTO_TEST_CASE(test_any_function_incorrect_args) {
 }
 
 BOOST_AUTO_TEST_CASE(test_any_function_invalid) {
-  // auto no_pointers = make_any_function([](int*){});
-  // auto no_const_pointers = make_any_function([](int const*){});
-  // auto no_non_const_refs = make_any_function([](int&){});
+  // auto no_pointers = AnyFunction([](int*){});
+  // auto no_const_pointers = AnyFunction([](int const*){});
+  // auto no_non_const_refs = AnyFunction([](int&){});
 
-  // auto no_return_refs = make_any_function([](int const& x) -> int const& {
-  // return x; }); auto no_return_ptrs = make_any_function([](int const& x) {
+  // auto no_return_refs = AnyFunction([](int const& x) -> int const& {
+  // return x; }); auto no_return_ptrs = AnyFunction([](int const& x) {
   // return &x; });
 
-  // auto must_be_const = make_any_function([]() mutable {});
+  // auto must_be_const = AnyFunction([]() mutable {});
 }
 
 BOOST_AUTO_TEST_CASE(test_any_function_num_moves_copies) {
-  auto sentinal_func = make_any_function([](Sentinal x, Sentinal const& y) {
+  auto sentinal_func = AnyFunction([](Sentinal x, Sentinal const& y) {
     BOOST_CHECK_EQUAL(0, x.copies);
     BOOST_CHECK_EQUAL(2, x.moves); // 1 move into any, 1 into function
 

@@ -54,9 +54,9 @@ public:
   int decrement_ref_count() { return _ref_count.fetch_sub(1, std::memory_order_release) - 1; }
   int ref_count() { return _ref_count.load(std::memory_order_acquire); }
 
-  explicit FunctionTask(std::optional<AnyFunction> func, int num_inputs, int num_outputs)
+  explicit FunctionTask(std::optional<AnyFunction> func, int num_inputs)
       : _ref_count(num_inputs), func(std::move(func)), input_vals(num_inputs),
-        input_ptrs(num_inputs), ref_forwards(num_outputs) {}
+        input_ptrs(num_inputs), ref_forwards(num_inputs) {}
 };
 
 inline void propogate_outputs(FunctionTask& task, SmallVec<FunctionTask*, 10>& tasks_to_run) {
@@ -118,7 +118,7 @@ inline void propogate_outputs(FunctionTask& task, SmallVec<FunctionTask*, 10>& t
 
       // Add ref cleanup
       std::for_each(ref_it, ref_end, [ref_cleanup_data, i](const auto& loc) {
-        loc.task->ref_forwards[i] = ref_cleanup_data;
+        loc.task->ref_forwards[loc.input_term] = ref_cleanup_data;
       });
 
       ref_it = ref_end;
@@ -180,7 +180,7 @@ execute_graph(const FunctionGraph<std::tuple<Outputs...>, std::tuple<std::decay_
   tasks.reserve(g.nodes().size());
 
   // Create input task
-  tasks.push_back(std::make_unique<FunctionTask>(std::nullopt, 1, sizeof...(Inputs)));
+  tasks.push_back(std::make_unique<FunctionTask>(std::nullopt, 1));
   tasks.front()->results =
       util::make_vector<SmallVec<std::any, 3>>(std::forward<Inputs>(inputs)...);
 
@@ -188,12 +188,11 @@ execute_graph(const FunctionGraph<std::tuple<Outputs...>, std::tuple<std::decay_
   std::transform(
       g.nodes().begin() + 1, g.nodes().end() - 1, std::back_inserter(tasks), [&](const auto& node) {
         assert(node.func);
-        return std::make_unique<FunctionTask>(*node.func, node.func->input_types().size(),
-                                              node.func->output_types().size());
+        return std::make_unique<FunctionTask>(*node.func, node.func->input_types().size());
       });
 
   // Create output task, sizeof(Outputs) + 1 so it never runs
-  tasks.push_back(std::make_unique<FunctionTask>(std::nullopt, sizeof...(Outputs) + 1, 0));
+  tasks.push_back(std::make_unique<FunctionTask>(std::nullopt, sizeof...(Outputs) + 1));
 
   // Connect outputs
   boost::for_each(boost::combine(g.nodes(), tasks), [&tasks](const auto& tuple) {

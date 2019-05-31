@@ -22,8 +22,8 @@ BOOST_AUTO_TEST_CASE(simple_graph) {
   auto [con_g, in1, in2] = make_graph<int, int>();
   auto g = std::move(con_g).outputs<int>(fg(sum)(fg(cidentity)(in1), in2));
 
-  std::vector<Node> expected_nodes{Node{}, Node{make_any_function(identity)},
-                                   Node{make_any_function(sum)}, Node{}};
+  std::vector<Node> expected_nodes{Node{}, Node{AnyFunction(identity)}, Node{AnyFunction(sum)},
+                                   Node{}};
 
   expected_nodes[0].outputs = {{0, {1, 0}, PassBy::ref}, {1, {2, 1}, PassBy::copy}};
   expected_nodes[1].outputs = {{0, {2, 0}, PassBy::copy}};
@@ -57,10 +57,10 @@ BOOST_AUTO_TEST_CASE(inner_graph) {
   auto g = std::move(con_g).outputs<int>(inner_g(id, cid));
 
   std::vector<Node> expected_nodes{Node{},
-                                   Node{make_any_function(identity)},
-                                   Node{make_any_function(cidentity)},
-                                   Node{make_any_function(cidentity)},
-                                   Node{make_any_function(sum)},
+                                   Node{AnyFunction(identity)},
+                                   Node{AnyFunction(cidentity)},
+                                   Node{AnyFunction(cidentity)},
+                                   Node{AnyFunction(sum)},
                                    Node{}};
 
   expected_nodes[0].outputs = {{0, {1, 0}, PassBy::copy}, {1, {2, 0}, PassBy::ref}};

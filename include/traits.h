@@ -117,9 +117,11 @@ struct tuple_drop_first<std::tuple<T, Ts...>> {
 template <typename Tuple>
 using tuple_drop_first_t = typename tuple_drop_first<Tuple>::type;
 
-// If T is a tuple, T, otherwise std::tuple<T>
+// If T is a tuple, T, if T is void std::tuple<>, otherwise std::tuple<T>
 template <typename T>
-using tuple_wrap_t = std::conditional_t<is_tuple_v<T>, T, std::tuple<T>>;
+using tuple_wrap_t =
+    std::conditional_t<is_tuple_v<T>, T,
+                       std::conditional_t<std::is_same_v<T, void>, std::tuple<>, std::tuple<T>>>;
 
 template <typename>
 struct function_traits_impl;

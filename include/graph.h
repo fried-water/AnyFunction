@@ -139,7 +139,7 @@ class Delayed<std::tuple<Outputs...>, std::tuple<Inputs...>> {
     std::vector<graph::Node>* nodes = std::get<0>(std::tie(edges...)).nodes;
     add_edges(any_function.input_types(), *nodes, std::tuple(std::move(edges)...),
               std::make_index_sequence<sizeof...(Inputs)>());
-    nodes->emplace_back(std::move(any_function) /*, TODO no_copy */);
+    nodes->emplace_back(std::move(any_function));
 
     if constexpr(sizeof...(Outputs) == 1) {
       return Edge<std::tuple_element_t<0, std::tuple<Outputs...>>>{
@@ -151,7 +151,7 @@ class Delayed<std::tuple<Outputs...>, std::tuple<Inputs...>> {
 
 public:
   template <typename F>
-  Delayed(F f) : _any_function(make_any_function(std::move(f))) {}
+  Delayed(F f) : _any_function(AnyFunction(std::move(f))) {}
 
   auto operator()(Edge<Inputs>... inputs) && {
     return add_to_graph(std::move(_any_function), inputs...);

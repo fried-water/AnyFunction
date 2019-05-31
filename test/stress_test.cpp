@@ -46,7 +46,7 @@ FunctionGraph<std::tuple<int>, std::tuple<int>> create_graph(int depth) {
 } // namespace
 
 BOOST_AUTO_TEST_CASE(stress_test) {
-  const int depth = 18;
+  const int depth = 14;
   const int num_executions = 100;
   tbb_executor executor;
 

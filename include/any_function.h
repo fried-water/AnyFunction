@@ -23,6 +23,9 @@ public:
   using InvokeResult = SmallVec<std::any, 1>;
   using InvokeInput = SmallVec<std::any*, 3>;
 
+  template <typename F>
+  explicit AnyFunction(F f);
+
   InvokeResult invoke(InvokeInput inputs) const {
     if(inputs.size() != input_types().size())
       throw BadInvocation();
@@ -37,30 +40,9 @@ private:
 
   SmallVec<Type, 3> _input_types;
   SmallVec<Type, 1> _output_types;
-
-  explicit AnyFunction(std::function<InvokeResult(InvokeInput)> func, SmallVec<Type, 3> input_types,
-                       SmallVec<Type, 1> output_types)
-      : _func(std::move(func)), _input_types(std::move(input_types)), _output_types(output_types) {}
-
-  template <typename F>
-  friend AnyFunction make_any_function(F f);
 };
 
-template <typename F>
-AnyFunction make_any_function(F f);
-
 namespace details {
-
-template <typename TupleTypes, std::size_t N, std::size_t... Is>
-auto make_types_impl(std::index_sequence<Is...>) {
-  return util::make_small_vector<Type, N>(make_type<std::tuple_element_t<Is, TupleTypes>>()...);
-}
-
-template <typename TupleTypes, std::size_t N>
-auto make_types() {
-  return make_types_impl<TupleTypes, N>(std::make_index_sequence<std::tuple_size_v<TupleTypes>>());
-}
-
 template <typename Types, typename F, std::size_t... Is>
 AnyFunction::InvokeResult call_with_any_vec(F f, AnyFunction::InvokeInput inputs,
                                             std::index_sequence<Is...>) {
@@ -96,31 +78,22 @@ constexpr bool valid_return_type() {
 }
 
 template <typename F>
-AnyFunction make_any_function(F f) {
+AnyFunction::AnyFunction(F f)
+    : _input_types(make_types<decltype(_input_types), traits::function_args_t<F>>()),
+      _output_types(make_types<decltype(_output_types),
+                               traits::tuple_wrap_t<traits::function_return_t<F>>>()) {
   using f_traits = traits::function_traits<F>;
-  using ret_type = typename f_traits::return_type;
-  using args = typename f_traits::args;
+  using ret_type = traits::function_return_t<F>;
+  using args = traits::function_args_t<F>;
 
   constexpr bool legal_args = traits::tuple_all_of_v<traits::is_decayed_or_cref, args> &&
                               traits::tuple_none_of_v<std::is_pointer, args>;
 
   if constexpr(valid_return_type<ret_type>() && legal_args && f_traits::is_const) {
-    auto&& func = [f = std::move(f)](AnyFunction::InvokeInput inputs) {
+    _func = [f = std::move(f)](AnyFunction::InvokeInput inputs) {
       return details::call_with_any_vec<args>(std::move(f), std::move(inputs),
                                               std::make_index_sequence<f_traits::arity>());
     };
-
-    SmallVec<Type, 1> output_types = []() -> SmallVec<Type, 1> {
-      if constexpr(traits::is_tuple_v<ret_type>) {
-        return details::make_types<ret_type, 1>();
-      } else if constexpr(!std::is_same_v<void, ret_type>) {
-        return details::make_types<std::tuple<ret_type>, 1>();
-      } else {
-        return {};
-      }
-    }();
-
-    return AnyFunction(std::move(func), details::make_types<args, 3>(), std::move(output_types));
   } else {
     static_assert(f_traits::is_const, "No mutable lambdas and non-const operator().");
     static_assert(valid_return_type<ret_type>(),
