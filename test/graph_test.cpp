@@ -20,7 +20,7 @@ bool compare_nodes(const Node& expected, const Node& actual) {
 
 BOOST_AUTO_TEST_CASE(simple_graph) {
   auto [con_g, in1, in2] = make_graph<int, int>();
-  auto g = std::move(con_g).outputs<int>(fg(sum)(fg(cidentity)(in1), in2));
+  auto g = std::move(con_g).outputs(fg(sum)(fg(cidentity)(in1), in2));
 
   std::vector<Node> expected_nodes{Node{}, Node{AnyFunction(identity)}, Node{AnyFunction(sum)},
                                    Node{}};
@@ -36,10 +36,10 @@ BOOST_AUTO_TEST_CASE(simple_graph) {
 BOOST_AUTO_TEST_CASE(inside_empty_graph) {
   auto [inner_con_g, in3, in4] = make_graph<int, int>();
   auto inner_g =
-      std::move(inner_con_g).outputs<int>(fg(identity)(fg(by2)(fg(sum)(fg(cidentity)(in3), in4))));
+      std::move(inner_con_g).outputs(fg(identity)(fg(by2)(fg(sum)(fg(cidentity)(in3), in4))));
 
   auto [con_g, in1, in2] = make_graph<int, int>();
-  auto g = std::move(con_g).outputs<int>(inner_g(in1, in2));
+  auto g = std::move(con_g).outputs(inner_g(in1, in2));
 
   BOOST_CHECK(std::equal(inner_g.nodes().begin(), inner_g.nodes().end(), g.nodes().begin(),
                          g.nodes().end(), compare_nodes));
@@ -52,9 +52,9 @@ BOOST_AUTO_TEST_CASE(inner_graph) {
   Edge<int> cid = fg(cidentity)(in2);
 
   auto [inner_con_g, in3, in4] = make_graph<int, int>();
-  auto inner_g = std::move(inner_con_g).outputs<int>(fg(sum)(fg(cidentity)(in3), in4));
+  auto inner_g = std::move(inner_con_g).outputs(fg(sum)(fg(cidentity)(in3), in4));
 
-  auto g = std::move(con_g).outputs<int>(inner_g(id, cid));
+  auto g = std::move(con_g).outputs(inner_g(id, cid));
 
   std::vector<Node> expected_nodes{Node{},
                                    Node{AnyFunction(identity)},

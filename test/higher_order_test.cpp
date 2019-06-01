@@ -8,21 +8,29 @@
 
 using namespace anyf;
 
-int multiply(int x, const int& y) { return x * y; }
-int by2(int x) { return x * 2; }
+int multiply(int x, const int& y, std::string str) { return x * (y + str.size()); }
 
 BOOST_AUTO_TEST_CASE(test_map) {
-  auto [cong, vec, cint] = make_graph<std::vector<int>, int>();
-  auto g = std::move(cong).outputs<std::vector<int>>(map(multiply, vec, cint));
-
-  // auto [cong, vec] = make_graph<std::vector<int>>();
-  // auto g = std::move(cong).outputs<std::vector<int>>(map(by2, vec));
+  auto [cong, vec, cint, str] = make_graph<std::vector<int>, int, std::string>();
+  auto g = std::move(cong).outputs(map(multiply, vec, cint, str));
 
   std::vector<int> input{1, 2, 3};
   tbb_executor executor;
-  auto res = execute_graph(g, executor, std::move(input), 7);
+  auto res = execute_graph(g, executor, std::move(input), 7, std::string{"abc"});
 
-  std::vector<int> expected_7{7, 14, 21};
-  std::vector<int> expected_2{2, 4, 6};
-  BOOST_CHECK(res == expected_7);
+  std::vector<int> expected{10, 20, 30};
+  BOOST_CHECK(res == expected);
+}
+
+BOOST_AUTO_TEST_CASE(test_accumulate) {
+  auto sum = [](std::string x, int y, const char& base) { return x + static_cast<char>(base + y); };
+
+  auto [cong, vec, str, base] = make_graph<std::vector<int>, std::string, char>();
+  auto g = std::move(cong).outputs(accumulate(sum, vec, str, base));
+
+  std::vector<int> input{1, 2, 3};
+  tbb_executor executor;
+  auto res = execute_graph(g, executor, std::move(input), std::string{}, 'c');
+
+  BOOST_CHECK("def" == res);
 }

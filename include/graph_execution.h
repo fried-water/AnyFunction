@@ -113,8 +113,9 @@ inline void propogate_outputs(FunctionTask& task, SmallVec<FunctionTask*, 10>& t
                                   [i](const auto& edge) { return edge.output_term != i; });
 
       // Give reference tasks information to clean up the value
-      auto ref_cleanup_data = new RefCleanup{std::distance(ref_it, ref_end), &task.results[i],
-                                             has_move ? std::make_optional(*move_it) : std::nullopt};
+      auto ref_cleanup_data =
+          new RefCleanup{std::distance(ref_it, ref_end), &task.results[i],
+                         has_move ? std::make_optional(*move_it) : std::nullopt};
 
       // Add ref cleanup
       std::for_each(ref_it, ref_end, [ref_cleanup_data](const auto& loc) {

@@ -43,7 +43,7 @@ public:
   }
 
 private:
-  std::type_info const* _type;
+  const std::type_info* _type;
   uint8_t _properties;
 
   template <typename T>
@@ -103,7 +103,7 @@ struct TypeUnwrapper;
 template <typename... Types>
 struct TypeUnwrapper<std::tuple<Types...>> {
   constexpr std::array<Type, sizeof...(Types)> operator()() const {
-      return {make_type<Types>()...};
+    return {make_type<Types>()...};
   }
 };
 } // namespace detail

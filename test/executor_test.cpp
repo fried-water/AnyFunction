@@ -66,8 +66,8 @@ auto create_graph() {
                                  create_pipeline(6, 10)(size), create_pipeline(7, 10)(size)};
 
   auto fg_sum = fg(sum);
-  return std::move(g).outputs<int>(fg_sum(fg_sum(fg_sum(ps[0], ps[1]), fg_sum(ps[2], ps[3])),
-                                          fg_sum(fg_sum(ps[4], ps[5]), fg_sum(ps[6], ps[7]))));
+  return std::move(g).outputs(fg_sum(fg_sum(fg_sum(ps[0], ps[1]), fg_sum(ps[2], ps[3])),
+                                     fg_sum(fg_sum(ps[4], ps[5]), fg_sum(ps[6], ps[7]))));
 }
 
 template <typename Executor, typename Graph>
