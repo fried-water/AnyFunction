@@ -3,10 +3,10 @@
 
 namespace anyf {
 
-struct sequential_executor {
-  sequential_executor() = default;
+struct SequentialExecutor {
+  SequentialExecutor() = default;
   // To match other executor constructors that take num_threads
-  sequential_executor(int) {}
+  SequentialExecutor(int) {}
 
   template <typename F>
   void async(int, F&& f) {
@@ -14,7 +14,6 @@ struct sequential_executor {
   }
 
   int create_task_group() { return 0; }
-
   void wait_for_task_group(int) {}
 };
 

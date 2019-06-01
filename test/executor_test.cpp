@@ -89,17 +89,17 @@ void execute_graph_with_threads(Graph g) {
 
 BOOST_AUTO_TEST_CASE(example_graph_tbb) {
   std::cout << "\nExecuting graph with TBB\n\n";
-  execute_graph_with_threads<tbb_executor>(create_graph());
+  execute_graph_with_threads<TBBExecutor>(create_graph());
 }
 
 BOOST_AUTO_TEST_CASE(example_graph_seq) {
   std::cout << "\nExecuting graph Sequentially\n\n";
-  execute_graph_with_threads<sequential_executor>(create_graph());
+  execute_graph_with_threads<SequentialExecutor>(create_graph());
 }
 
 BOOST_AUTO_TEST_CASE(example_graph_task) {
   std::cout << "\nExecuting graph with custom task system\n\n";
-  execute_graph_with_threads<task_executor>(create_graph());
+  execute_graph_with_threads<TaskExecutor>(create_graph());
 }
 
 BOOST_AUTO_TEST_CASE(test_graph) {
@@ -123,7 +123,7 @@ BOOST_AUTO_TEST_CASE(test_graph) {
 
   FunctionGraph g(std::move(cg), in2);
 
-  tbb_executor executor;
+  SequentialExecutor executor;
   Sentinal x = execute_graph(g, executor, Sentinal{}, Sentinal{});
   std::cout << "Result "
             << " " << x.copies << " " << x.moves << "\n";

@@ -8,14 +8,14 @@
 
 namespace anyf {
 
-class tbb_executor {
+class TBBExecutor {
   tbb::task_scheduler_init _scheduler;
   std::unordered_map<int, tbb::task_group> _groups;
   int _next_task_group = 0;
 
 public:
-  tbb_executor() = default;
-  tbb_executor(unsigned num_threads) : _scheduler(num_threads) {}
+  TBBExecutor() = default;
+  TBBExecutor(unsigned num_threads) : _scheduler(num_threads) {}
 
   template <typename F>
   void async(int task_group, F&& f) {

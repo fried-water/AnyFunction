@@ -15,7 +15,7 @@
 
 namespace anyf {
 
-class task_queue {
+class TaskQueue {
   std::deque<std::tuple<std::function<void()>, int>> _q;
   bool _done = false;
   std::mutex _mutex;
@@ -73,11 +73,11 @@ public:
   }
 };
 
-class task_executor {
+class TaskExecutor {
   unsigned _count = std::thread::hardware_concurrency();
   int _next_task_group = 1;
   std::vector<std::thread> _threads;
-  std::vector<task_queue> _q;
+  std::vector<TaskQueue> _q;
   std::atomic<unsigned> _index = 0;
 
   std::unordered_map<int, std::atomic<unsigned>> _group_task_counts;
@@ -117,19 +117,19 @@ class task_executor {
   }
 
 public:
-  task_executor() : _q(_count) {
+  TaskExecutor() : _q(_count) {
     for(unsigned i = 0; i < _count - 1; i++) {
       _threads.emplace_back([this, i]() { run(i); });
     }
   }
 
-  task_executor(unsigned count) : _count(count), _q(_count) {
+  TaskExecutor(unsigned count) : _count(count), _q(_count) {
     for(unsigned i = 0; i < _count - 1; i++) {
       _threads.emplace_back([this, i]() { run(i); });
     }
   }
 
-  ~task_executor() {
+  ~TaskExecutor() {
     for(auto& q : _q)
       q.done();
     for(auto& thread : _threads)

@@ -15,7 +15,7 @@ BOOST_AUTO_TEST_CASE(test_map) {
   FunctionGraph g(std::move(cg), map(multiply, vec, cint, str));
 
   std::vector<int> input{1, 2, 3};
-  tbb_executor executor;
+  TBBExecutor executor;
   auto res = execute_graph(g, executor, std::move(input), 7, std::string{"abc"});
 
   std::vector<int> expected{10, 20, 30};
@@ -29,7 +29,7 @@ BOOST_AUTO_TEST_CASE(test_accumulate) {
   FunctionGraph g(std::move(cg), accumulate(sum, vec, str, base));
 
   std::vector<int> input{1, 2, 3};
-  tbb_executor executor;
+  TBBExecutor executor;
   auto res = execute_graph(g, executor, std::move(input), std::string{}, 'c');
 
   BOOST_CHECK("def" == res);

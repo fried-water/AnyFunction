@@ -48,7 +48,7 @@ FunctionGraph<std::tuple<int>, std::tuple<int>> create_graph(int depth) {
 BOOST_AUTO_TEST_CASE(stress_test) {
   const int depth = 14;
   const int num_executions = 100;
-  tbb_executor executor;
+  TBBExecutor executor;
 
   std::cout << "Thread count: " << std::thread::hardware_concurrency() << '\n';
   std::cout << "Creating graph of size " << ((1 << depth) * 2 - 1) << "\n";
