@@ -159,10 +159,8 @@ public:
 };
 
 template <typename F>
-auto fg(F f) {
-  return Delayed<traits::tuple_wrap_t<traits::function_return_t<F>>,
-                 traits::tuple_map_t<std::decay, traits::function_args_t<F>>>{std::move(f)};
-}
+Delayed(F f) -> Delayed<traits::tuple_wrap_t<traits::function_return_t<F>>,
+                 traits::tuple_map_t<std::decay, traits::function_args_t<F>>>;
 
 template <typename... Inputs>
 std::tuple<ConstructingGraph<std::tuple<Inputs...>>, Edge<Inputs>...> make_graph() {

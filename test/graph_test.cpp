@@ -20,7 +20,7 @@ bool compare_nodes(const Node& expected, const Node& actual) {
 
 BOOST_AUTO_TEST_CASE(simple_graph) {
   auto [cg, in1, in2] = make_graph<int, int>();
-  FunctionGraph g(std::move(cg), fg(sum)(fg(cidentity)(in1), in2));
+  FunctionGraph g(std::move(cg), Delayed(sum)(Delayed(cidentity)(in1), in2));
 
   std::vector<Node> expected_nodes{Node{}, Node{AnyFunction(identity)}, Node{AnyFunction(sum)},
                                    Node{}};
@@ -36,7 +36,7 @@ BOOST_AUTO_TEST_CASE(simple_graph) {
 BOOST_AUTO_TEST_CASE(inside_empty_graph) {
   auto [inner_cg, in3, in4] = make_graph<int, int>();
   FunctionGraph inner_g(std::move(inner_cg),
-                        fg(identity)(fg(by2)(fg(sum)(fg(cidentity)(in3), in4))));
+                        Delayed(identity)(Delayed(by2)(Delayed(sum)(Delayed(cidentity)(in3), in4))));
 
   auto [cg, in1, in2] = make_graph<int, int>();
   FunctionGraph g(std::move(cg), inner_g(in1, in2));
@@ -48,11 +48,11 @@ BOOST_AUTO_TEST_CASE(inside_empty_graph) {
 BOOST_AUTO_TEST_CASE(inner_graph) {
   auto [cg, in1, in2] = make_graph<int, int>();
 
-  Edge<int> id = fg(identity)(in1);
-  Edge<int> cid = fg(cidentity)(in2);
+  Edge<int> id = Delayed(identity)(in1);
+  Edge<int> cid = Delayed(cidentity)(in2);
 
   auto [inner_cg, in3, in4] = make_graph<int, int>();
-  FunctionGraph inner_g(std::move(inner_cg), fg(sum)(fg(cidentity)(in3), in4));
+  FunctionGraph inner_g(std::move(inner_cg), Delayed(sum)(Delayed(cidentity)(in3), in4));
 
   FunctionGraph g(std::move(cg), inner_g(id, cid));
 

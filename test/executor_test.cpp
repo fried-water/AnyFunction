@@ -47,10 +47,10 @@ std::vector<int> sort_vector(std::vector<int> vec) {
 int sum(int x, int y) { return x + y; }
 
 auto create_pipeline(int seed, int element) {
-  auto create = fg(create_vector);
-  auto shuffle = fg(create_shuffle(seed));
-  auto sort = fg(sort_vector);
-  auto get_ele = fg(get_element(element));
+  auto create = Delayed(create_vector);
+  auto shuffle = Delayed(create_shuffle(seed));
+  auto sort = Delayed(sort_vector);
+  auto get_ele = Delayed(get_element(element));
 
   auto [g, size] = make_graph<int>();
   return FunctionGraph(std::move(g), get_ele(sort(shuffle(create(size)))));
@@ -64,9 +64,9 @@ auto create_graph() {
                                  create_pipeline(4, 10)(size), create_pipeline(5, 10)(size),
                                  create_pipeline(6, 10)(size), create_pipeline(7, 10)(size)};
 
-  auto fg_sum = fg(sum);
-  return FunctionGraph(std::move(g), fg_sum(fg_sum(fg_sum(ps[0], ps[1]), fg_sum(ps[2], ps[3])),
-                                            fg_sum(fg_sum(ps[4], ps[5]), fg_sum(ps[6], ps[7]))));
+  auto del_sum = Delayed(sum);
+  return FunctionGraph(std::move(g), del_sum(del_sum(del_sum(ps[0], ps[1]), del_sum(ps[2], ps[3])),
+                                            del_sum(del_sum(ps[4], ps[5]), del_sum(ps[6], ps[7]))));
 }
 
 template <typename Executor, typename Graph>
@@ -104,12 +104,12 @@ BOOST_AUTO_TEST_CASE(example_graph_task) {
 
 BOOST_AUTO_TEST_CASE(test_graph) {
   auto take = [](int i) {
-    return fg([i](Sentinal sent) {
+    return Delayed([i](Sentinal sent) {
       std::cout << "Take" << i << " " << sent.copies << " " << sent.moves << "\n";
     });
   };
 
-  auto take_ref = fg([](const Sentinal& sent) {
+  auto take_ref = Delayed([](const Sentinal& sent) {
     std::cout << "Ref "
               << " " << sent.copies << " " << sent.moves << "\n";
   });

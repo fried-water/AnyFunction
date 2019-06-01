@@ -24,19 +24,19 @@ struct IntPairHash {
 FunctionGraph<std::tuple<int>, std::tuple<int>> create_graph(int depth) {
   std::unordered_map<std::pair<int, int>, Edge<int>, IntPairHash> edges;
 
-  auto fg_copy = fg(identity);
-  auto fg_sum = fg(sum);
+  auto Delayed_copy = Delayed(identity);
+  auto Delayed_sum = Delayed(sum);
 
   auto [g, input] = make_graph<int>();
   int num_inputs = 1 << depth;
   for(int i = 0; i < num_inputs; i++) {
-    edges.emplace(std::pair(depth, i), fg_copy(input));
+    edges.emplace(std::pair(depth, i), Delayed_copy(input));
   }
 
   for(int layer = depth - 1; layer >= 0; layer--) {
     int nodes_on_layer = 1 << layer;
     for(int i = 0; i < nodes_on_layer; i++) {
-      edges.emplace(std::pair(layer, i), fg_sum(edges.at(std::pair(layer + 1, i * 2)),
+      edges.emplace(std::pair(layer, i), Delayed_sum(edges.at(std::pair(layer + 1, i * 2)),
                                                 edges.at(std::pair(layer + 1, i * 2 + 1))));
     }
   }
