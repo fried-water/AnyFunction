@@ -5,6 +5,8 @@
 #define BOOST_TEST_DYN_LINK
 #include <boost/test/unit_test.hpp>
 
+#include <boost/range/algorithm/equal.hpp>
+
 using namespace anyf;
 
 namespace {
@@ -100,7 +102,7 @@ BOOST_AUTO_TEST_CASE(test_any_function_num_moves_copies) {
   auto result = sentinal_func.invoke(
       util::map<AnyFunction::InvokeInput>(input_vals, [](auto& x) { return &x; }));
 
-  BOOST_CHECK_EQUAL(1, result.size());
+  BOOST_CHECK_EQUAL(1u, result.size());
 
   Sentinal const* result_sentinal = std::any_cast<Sentinal>(&result[0]);
 

@@ -6,6 +6,7 @@
 #include "traits.h"
 
 #include <memory>
+#include <optional>
 #include <variant>
 #include <vector>
 
@@ -173,7 +174,7 @@ std::tuple<ConstructingGraph<std::tuple<Inputs...>>, Edge<Inputs>...> make_graph
   auto nodes = g._nodes.get();
   nodes->emplace_back();
   return std::tuple_cat(
-      std::tuple(std::move(g)),
+      std::make_tuple(std::move(g)),
       output_edges<Inputs...>(nodes, std::make_index_sequence<sizeof...(Inputs)>()));
 }
 

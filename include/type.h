@@ -25,6 +25,8 @@ class Type {
   constexpr static uint8_t MOVE_FLAG = 1 << 3;
 
 public:
+  constexpr Type() : _type(&typeid(void)), _properties(0) {}
+
   constexpr bool is_const() const { return (_properties & CONST_FLAG) > 0; }
   constexpr bool is_ref() const { return (_properties & REF_FLAG) > 0; }
   constexpr bool is_copy_constructible() const { return (_properties & COPY_FLAG) > 0; }
@@ -47,7 +49,7 @@ private:
   template <typename T>
   friend constexpr Type make_type();
 
-  explicit Type(std::type_info const* type, uint8_t properties)
+  explicit constexpr Type(std::type_info const* type, uint8_t properties)
       : _type(type), _properties(properties) {}
 };
 
@@ -101,7 +103,7 @@ struct TypeUnwrapper;
 template <typename... Types>
 struct TypeUnwrapper<std::tuple<Types...>> {
   constexpr std::array<Type, sizeof...(Types)> operator()() const {
-    return {make_type<Types>()...};
+      return {make_type<Types>()...};
   }
 };
 } // namespace detail
