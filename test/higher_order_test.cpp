@@ -11,8 +11,8 @@ using namespace anyf;
 int multiply(int x, const int& y, std::string str) { return x * (y + str.size()); }
 
 BOOST_AUTO_TEST_CASE(test_map) {
-  auto [cong, vec, cint, str] = make_graph<std::vector<int>, int, std::string>();
-  auto g = std::move(cong).outputs(map(multiply, vec, cint, str));
+  auto [cg, vec, cint, str] = make_graph<std::vector<int>, int, std::string>();
+  FunctionGraph g(std::move(cg), map(multiply, vec, cint, str));
 
   std::vector<int> input{1, 2, 3};
   tbb_executor executor;
@@ -25,8 +25,8 @@ BOOST_AUTO_TEST_CASE(test_map) {
 BOOST_AUTO_TEST_CASE(test_accumulate) {
   auto sum = [](std::string x, int y, const char& base) { return x + static_cast<char>(base + y); };
 
-  auto [cong, vec, str, base] = make_graph<std::vector<int>, std::string, char>();
-  auto g = std::move(cong).outputs(accumulate(sum, vec, str, base));
+  auto [cg, vec, str, base] = make_graph<std::vector<int>, std::string, char>();
+  FunctionGraph g(std::move(cg), accumulate(sum, vec, str, base));
 
   std::vector<int> input{1, 2, 3};
   tbb_executor executor;

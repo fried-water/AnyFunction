@@ -9,13 +9,12 @@
 #include <tuple>
 #include <type_traits>
 
-#include <iostream>
-
 namespace anyf {
 
 // Reduce
+// Filter
 // Select
-// While
+// Converge
 
 namespace details {
 

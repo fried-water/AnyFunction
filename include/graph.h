@@ -62,17 +62,20 @@ class FunctionGraph;
 template <typename... Outputs, typename... Inputs>
 class FunctionGraph<std::tuple<Outputs...>, std::tuple<Inputs...>> {
 public:
+  explicit FunctionGraph(ConstructingGraph<std::tuple<Inputs...>> cg, Edge<Outputs>... edges);
+
   const std::vector<graph::Node>& nodes() const { return _nodes; }
 
   std::conditional_t<sizeof...(Outputs) == 1, Edge<Outputs...>, std::tuple<Edge<Outputs>...>>
   operator()(Edge<Inputs>... edges);
 
 private:
-  explicit FunctionGraph(std::vector<graph::Node> nodes) : _nodes(std::move(nodes)) {}
   std::vector<graph::Node> _nodes;
-
-  friend class ConstructingGraph<std::tuple<Inputs...>>;
 };
+
+template <typename... Outputs, typename... Inputs>
+FunctionGraph(ConstructingGraph<std::tuple<Inputs...>> cg, Edge<Outputs>... edges)
+    ->FunctionGraph<std::tuple<Outputs...>, std::tuple<Inputs...>>;
 
 constexpr PassBy pass_by_of(const Type& type) {
   if(type.is_ref()) {
@@ -113,17 +116,11 @@ class ConstructingGraph {
   template <typename... Ts>
   friend std::tuple<ConstructingGraph<std::tuple<Ts...>>, Edge<Ts>...> make_graph();
 
+  template <typename FOutputs, typename FInputs>
+  friend class FunctionGraph;
+
 public:
   const std::vector<graph::Node>& nodes() const { return *_nodes; }
-
-  template <typename... Outputs>
-  FunctionGraph<std::tuple<Outputs...>, Inputs> outputs(Edge<Outputs>... edges) && {
-    assert(((edges.nodes == _nodes.get()) && ...)); // all edges must come from this graph
-    add_edges(std::array<Type, sizeof...(Outputs)>{make_type<Outputs>()...}, *_nodes,
-              std::tuple(std::move(edges)...), std::make_index_sequence<sizeof...(Outputs)>());
-    _nodes->emplace_back();
-    return FunctionGraph<std::tuple<Outputs...>, Inputs>{std::move(*_nodes)};
-  }
 };
 
 template <typename Outputs, typename Inputs>
@@ -176,6 +173,16 @@ std::tuple<ConstructingGraph<std::tuple<Inputs...>>, Edge<Inputs>...> make_graph
   return std::tuple_cat(
       std::make_tuple(std::move(g)),
       output_edges<Inputs...>(nodes, std::make_index_sequence<sizeof...(Inputs)>()));
+}
+
+template <typename... Outputs, typename... Inputs>
+FunctionGraph<std::tuple<Outputs...>, std::tuple<Inputs...>>::FunctionGraph(
+    ConstructingGraph<std::tuple<Inputs...>> cg, Edge<Outputs>... edges) {
+  assert(((edges.nodes == cg._nodes.get()) && ...)); // all edges must come from this graph
+  add_edges(std::array<Type, sizeof...(Outputs)>{make_type<Outputs>()...}, *cg._nodes,
+            std::tuple(std::move(edges)...), std::make_index_sequence<sizeof...(Outputs)>());
+  cg._nodes->emplace_back();
+  _nodes = std::move(*cg._nodes);
 }
 
 template <typename... Outputs, typename... Inputs>

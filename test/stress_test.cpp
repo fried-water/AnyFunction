@@ -41,7 +41,7 @@ FunctionGraph<std::tuple<int>, std::tuple<int>> create_graph(int depth) {
     }
   }
 
-  return std::move(g).outputs(edges.at(std::pair(0, 0)));
+  return FunctionGraph(std::move(g), edges.at(std::pair(0, 0)));
 }
 } // namespace
 
