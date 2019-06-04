@@ -97,21 +97,18 @@ constexpr Type make_type() {
 }
 
 namespace detail {
-template <typename T>
+template <typename T, typename Container>
 struct TypeUnwrapper;
 
-template <typename... Types>
-struct TypeUnwrapper<std::tuple<Types...>> {
-  constexpr std::array<Type, sizeof...(Types)> operator()() const {
-    return {make_type<Types>()...};
-  }
+template <typename... Types, typename Container>
+struct TypeUnwrapper<std::tuple<Types...>, Container> {
+  constexpr Container operator()() const { return {make_type<Types>()...}; }
 };
 } // namespace detail
 
-template <typename Container, typename Tuple>
+template <typename Tuple, typename Container = std::array<Type, std::tuple_size_v<Tuple>>>
 Container make_types() {
-  auto temp = detail::TypeUnwrapper<Tuple>{}();
-  return {temp.begin(), temp.end()};
+  return detail::TypeUnwrapper<Tuple, Container>{}();
 }
 
 } // namespace anyf

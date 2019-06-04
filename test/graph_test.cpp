@@ -35,8 +35,8 @@ BOOST_AUTO_TEST_CASE(simple_graph) {
 
 BOOST_AUTO_TEST_CASE(inside_empty_graph) {
   auto [inner_cg, in3, in4] = make_graph<int, int>();
-  FunctionGraph inner_g(std::move(inner_cg),
-                        Delayed(identity)(Delayed(by2)(Delayed(sum)(Delayed(cidentity)(in3), in4))));
+  FunctionGraph inner_g(std::move(inner_cg), Delayed(identity)(Delayed(by2)(
+                                                 Delayed(sum)(Delayed(cidentity)(in3), in4))));
 
   auto [cg, in1, in2] = make_graph<int, int>();
   FunctionGraph g(std::move(cg), inner_g(in1, in2));

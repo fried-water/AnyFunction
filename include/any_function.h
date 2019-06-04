@@ -26,7 +26,7 @@ public:
   template <typename F>
   explicit AnyFunction(F f);
 
-  InvokeResult invoke(InvokeInput inputs) const {
+  InvokeResult operator()(InvokeInput inputs) const {
     if(inputs.size() != input_types().size())
       throw BadInvocation();
     return _func(std::move(inputs));
@@ -36,7 +36,7 @@ public:
   const SmallVecBase<Type>& output_types() const { return _output_types; }
 
 private:
-  std::function<InvokeResult(InvokeInput)> _func;
+  std::function<InvokeResult(InvokeInput&&)> _func;
 
   SmallVec<Type, 3> _input_types;
   SmallVec<Type, 1> _output_types;
@@ -44,7 +44,7 @@ private:
 
 namespace details {
 template <typename Types, typename F, std::size_t... Is>
-AnyFunction::InvokeResult call_with_any_vec(F f, AnyFunction::InvokeInput inputs,
+AnyFunction::InvokeResult call_with_any_vec(F f, AnyFunction::InvokeInput&& inputs,
                                             std::index_sequence<Is...>) {
   using Ret = typename traits::function_traits<F>::return_type;
 
@@ -79,9 +79,9 @@ constexpr bool valid_return_type() {
 
 template <typename F>
 AnyFunction::AnyFunction(F f)
-    : _input_types(make_types<decltype(_input_types), traits::function_args_t<F>>()),
-      _output_types(make_types<decltype(_output_types),
-                               traits::tuple_wrap_t<traits::function_return_t<F>>>()) {
+    : _input_types(make_types<traits::function_args_t<F>, decltype(_input_types)>()),
+      _output_types(make_types<traits::tuple_wrap_t<traits::function_return_t<F>>,
+                               decltype(_output_types)>()) {
   using f_traits = traits::function_traits<F>;
   using ret_type = traits::function_return_t<F>;
   using args = traits::function_args_t<F>;
@@ -90,7 +90,7 @@ AnyFunction::AnyFunction(F f)
                               traits::tuple_none_of_v<std::is_pointer, args>;
 
   if constexpr(valid_return_type<ret_type>() && legal_args && f_traits::is_const) {
-    _func = [f = std::move(f)](AnyFunction::InvokeInput inputs) {
+    _func = [f = std::move(f)](AnyFunction::InvokeInput&& inputs) {
       return details::call_with_any_vec<args>(std::move(f), std::move(inputs),
                                               std::make_index_sequence<f_traits::arity>());
     };

@@ -37,12 +37,74 @@ struct NodeEdge {
   }
 };
 
+struct VirtualExecutor {
+  virtual ~VirtualExecutor() = default;
+  virtual void async(int tg, std::function<void()> func) = 0;
+  virtual int create_task_group() = 0;
+  virtual void wait_for_task_group(int) = 0;
+};
+
+template <typename Executor>
+struct VirtualExecutorImpl : VirtualExecutor {
+  Executor& executor;
+
+  VirtualExecutorImpl(Executor& executor) : executor(executor) {}
+
+  void async(int tg, std::function<void()> func) override { executor.async(tg, std::move(func)); }
+  int create_task_group() override { return executor.create_task_group(); }
+  void wait_for_task_group(int tg) override { executor.wait_for_task_group(tg); }
+};
+
+struct VirtualFunc {
+  int num_inputs;
+  VirtualFunc(int num_inputs) : num_inputs(num_inputs) {}
+  virtual ~VirtualFunc() = default;
+  virtual AnyFunction::InvokeResult operator()(VirtualExecutor& executor,
+                                               AnyFunction::InvokeInput&& inputs) const = 0;
+};
+
+struct Execution {
+  std::variant<AnyFunction, std::shared_ptr<VirtualFunc>> variant;
+
+  Execution(AnyFunction any_function) : variant(std::move(any_function)) {}
+  Execution(std::shared_ptr<VirtualFunc> virt_func) : variant(std::move(virt_func)) {}
+
+  template <typename Executor>
+  AnyFunction::InvokeResult operator()(Executor& executor,
+                                       AnyFunction::InvokeInput&& inputs) const {
+    return std::visit(
+        [&](const auto& arg) {
+          using T = std::decay_t<decltype(arg)>;
+          if constexpr(std::is_same_v<T, AnyFunction>) {
+            return arg(std::move(inputs));
+          } else {
+            VirtualExecutorImpl virtual_executor{executor};
+            return (*arg)(virtual_executor, std::move(inputs));
+          }
+        },
+        variant);
+  }
+
+  int num_inputs() const {
+    return std::visit(
+        [&](const auto& arg) {
+          using T = std::decay_t<decltype(arg)>;
+          if constexpr(std::is_same_v<T, AnyFunction>) {
+            return static_cast<int>(arg.input_types().size());
+          } else {
+            return arg->num_inputs;
+          }
+        },
+        variant);
+  }
+};
+
 struct Node {
-  std::optional<AnyFunction> func;
+  std::optional<Execution> func;
   SmallVec<NodeEdge, 2> outputs;
 
   Node() = default;
-  Node(AnyFunction any_func) : func(std::move(any_func)) {}
+  Node(Execution execution) : func(Execution{std::move(execution)}) {}
 };
 
 } // namespace graph
@@ -86,10 +148,17 @@ constexpr PassBy pass_by_of(const Type& type) {
   return PassBy::copy;
 }
 
+// Ensure all edges came from same graph
+template <typename... Ts>
+void check_edges(Edge<Ts>... edges) {
+  std::array<std::vector<graph::Node>*, sizeof...(Ts)> ptrs{edges.nodes...};
+  assert(std::adjacent_find(ptrs.begin(), ptrs.end(), std::not_equal_to<>()) == ptrs.end());
+}
+
 template <typename... Outputs, std::size_t... Is>
 std::tuple<Edge<Outputs>...> output_edges(std::vector<graph::Node>* nodes,
                                           std::index_sequence<Is...>) {
-  return std::tuple(Edge<Outputs>{nodes, {static_cast<int>(nodes->size() - 1), Is}}...);
+  return std::make_tuple(Edge<Outputs>{nodes, {static_cast<int>(nodes->size() - 1), Is}}...);
 }
 
 template <typename... Outputs, std::size_t... Is>
@@ -133,7 +202,7 @@ class Delayed<std::tuple<Outputs...>, std::tuple<Inputs...>> {
   AnyFunction _any_function;
 
   static auto add_to_graph(AnyFunction any_function, Edge<Inputs>... edges) {
-    assert((edges.nodes == ...)); // all edges must come from the same graph
+    check_edges(edges...); // all edges must come from the same graph
     std::vector<graph::Node>* nodes = std::get<0>(std::tie(edges...)).nodes;
     add_edges(any_function.input_types(), *nodes, std::tuple(std::move(edges)...),
               std::make_index_sequence<sizeof...(Inputs)>());
@@ -159,8 +228,9 @@ public:
 };
 
 template <typename F>
-Delayed(F f) -> Delayed<traits::tuple_wrap_t<traits::function_return_t<F>>,
-                 traits::tuple_map_t<std::decay, traits::function_args_t<F>>>;
+Delayed(F f)
+    ->Delayed<traits::tuple_wrap_t<traits::function_return_t<F>>,
+              traits::tuple_map_t<std::decay, traits::function_args_t<F>>>;
 
 template <typename... Inputs>
 std::tuple<ConstructingGraph<std::tuple<Inputs...>>, Edge<Inputs>...> make_graph() {
@@ -176,7 +246,7 @@ std::tuple<ConstructingGraph<std::tuple<Inputs...>>, Edge<Inputs>...> make_graph
 template <typename... Outputs, typename... Inputs>
 FunctionGraph<std::tuple<Outputs...>, std::tuple<Inputs...>>::FunctionGraph(
     ConstructingGraph<std::tuple<Inputs...>> cg, Edge<Outputs>... edges) {
-  assert(((edges.nodes == cg._nodes.get()) && ...)); // all edges must come from this graph
+  assert(((edges.nodes == cg._nodes.get()) && ...)); // all edges must come from cg
   add_edges(std::array<Type, sizeof...(Outputs)>{make_type<Outputs>()...}, *cg._nodes,
             std::tuple(std::move(edges)...), std::make_index_sequence<sizeof...(Outputs)>());
   cg._nodes->emplace_back();

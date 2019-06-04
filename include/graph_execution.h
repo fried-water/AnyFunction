@@ -31,7 +31,7 @@ class alignas(64) FunctionTask {
   std::atomic<int> _ref_count;
 
 public:
-  std::optional<AnyFunction> func;
+  std::optional<graph::Execution> func;
 
   // Stores the values of the inputs for copy/move parameters
   SmallVec<std::any, 3> input_vals;
@@ -54,7 +54,7 @@ public:
   int decrement_ref_count() { return _ref_count.fetch_sub(1, std::memory_order_release) - 1; }
   int ref_count() { return _ref_count.load(std::memory_order_acquire); }
 
-  explicit FunctionTask(std::optional<AnyFunction> func, int num_inputs)
+  explicit FunctionTask(std::optional<graph::Execution> func, int num_inputs)
       : _ref_count(num_inputs), func(std::move(func)), input_vals(num_inputs),
         input_ptrs(num_inputs), ref_forwards(num_inputs) {}
 };
@@ -136,7 +136,7 @@ inline void propogate_outputs(FunctionTask& task, SmallVec<FunctionTask*, 10>& t
 
 template <typename Executor, typename TaskGroupId>
 void execute_task(Executor& executor, FunctionTask& task, TaskGroupId id) {
-  task.results = task.func->invoke(std::move(task.input_ptrs));
+  task.results = (*task.func)(executor, std::move(task.input_ptrs));
 
   SmallVec<FunctionTask*, 10> tasks_to_run;
 
@@ -171,10 +171,9 @@ void execute_task(Executor& executor, FunctionTask& task, TaskGroupId id) {
 }
 
 template <typename... Outputs, typename Executor, typename... Inputs>
-std::conditional_t<sizeof...(Outputs) == 1, std::tuple_element_t<0, std::tuple<Outputs...>>,
-                   std::tuple<Outputs...>>
-execute_graph(const FunctionGraph<std::tuple<Outputs...>, std::tuple<std::decay_t<Inputs>...>>& g,
-              Executor& executor, Inputs&&... inputs) {
+SmallVec<std::any, 3>
+execute_graph(const FunctionGraph<std::tuple<Outputs...>, std::tuple<Inputs...>>& g,
+              Executor& executor, SmallVec<std::any, 3> inputs) {
   using namespace anyf::graph;
 
   SmallVec<std::unique_ptr<FunctionTask>, 10> tasks;
@@ -182,15 +181,14 @@ execute_graph(const FunctionGraph<std::tuple<Outputs...>, std::tuple<std::decay_
 
   // Create input task
   tasks.push_back(std::make_unique<FunctionTask>(std::nullopt, 1));
-  tasks.front()->results =
-      util::make_vector<SmallVec<std::any, 3>>(std::forward<Inputs>(inputs)...);
+  tasks.front()->results = std::move(inputs);
 
   // Create function tasks
-  std::transform(
-      g.nodes().begin() + 1, g.nodes().end() - 1, std::back_inserter(tasks), [&](const auto& node) {
-        assert(node.func);
-        return std::make_unique<FunctionTask>(*node.func, node.func->input_types().size());
-      });
+  std::transform(g.nodes().begin() + 1, g.nodes().end() - 1, std::back_inserter(tasks),
+                 [&](const auto& node) {
+                   assert(node.func);
+                   return std::make_unique<FunctionTask>(*node.func, node.func->num_inputs());
+                 });
 
   // Create output task, sizeof(Outputs) + 1 so it never runs
   tasks.push_back(std::make_unique<FunctionTask>(std::nullopt, sizeof...(Outputs) + 1));
@@ -235,10 +233,22 @@ execute_graph(const FunctionGraph<std::tuple<Outputs...>, std::tuple<std::decay_
 
   executor.wait_for_task_group(task_group_id);
 
+  return std::move(tasks.back()->input_vals);
+}
+
+template <typename... Outputs, typename Executor, typename... Inputs>
+std::conditional_t<sizeof...(Outputs) == 1, std::tuple_element_t<0, std::tuple<Outputs...>>,
+                   std::tuple<Outputs...>>
+execute_graph(const FunctionGraph<std::tuple<Outputs...>, std::tuple<std::decay_t<Inputs>...>>& g,
+              Executor& executor, Inputs&&... inputs) {
+
+  auto results = execute_graph(
+      g, executor, util::make_vector<SmallVec<std::any, 3>>(std::forward<Inputs>(inputs)...));
+
   if constexpr(sizeof...(Outputs) == 1) {
-    return std::any_cast<Outputs...>(std::move(tasks.back()->input_vals[0]));
+    return std::any_cast<Outputs...>(std::move(results[0]));
   } else {
-    return util::vec_to_tuple<std::tuple<Outputs...>>(std::move(tasks.back()->input_vals));
+    return util::vec_to_tuple<std::tuple<Outputs...>>(std::move(results));
   }
 }
 

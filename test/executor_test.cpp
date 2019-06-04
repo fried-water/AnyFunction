@@ -65,8 +65,9 @@ auto create_graph() {
                                  create_pipeline(6, 10)(size), create_pipeline(7, 10)(size)};
 
   auto del_sum = Delayed(sum);
-  return FunctionGraph(std::move(g), del_sum(del_sum(del_sum(ps[0], ps[1]), del_sum(ps[2], ps[3])),
-                                            del_sum(del_sum(ps[4], ps[5]), del_sum(ps[6], ps[7]))));
+  return FunctionGraph(std::move(g),
+                       del_sum(del_sum(del_sum(ps[0], ps[1]), del_sum(ps[2], ps[3])),
+                               del_sum(del_sum(ps[4], ps[5]), del_sum(ps[6], ps[7]))));
 }
 
 template <typename Executor, typename Graph>

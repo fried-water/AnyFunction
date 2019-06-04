@@ -15,8 +15,7 @@ template <typename... Outputs, typename... Inputs>
 std::tuple<Outputs...> invoke_with_values(AnyFunction func, Inputs... inputs) {
   auto any_vec = util::make_small_vector<std::any, 3>(inputs...);
 
-  auto result =
-      func.invoke(util::map<AnyFunction::InvokeInput>(any_vec, [](auto& x) { return &x; }));
+  auto result = func(util::map<AnyFunction::InvokeInput>(any_vec, [](auto& x) { return &x; }));
 
   BOOST_CHECK_EQUAL(sizeof...(Outputs), result.size());
 
@@ -99,8 +98,8 @@ BOOST_AUTO_TEST_CASE(test_any_function_num_moves_copies) {
 
   auto input_vals = util::make_small_vector<std::any, 3>(Sentinal{}, Sentinal{});
 
-  auto result = sentinal_func.invoke(
-      util::map<AnyFunction::InvokeInput>(input_vals, [](auto& x) { return &x; }));
+  auto result =
+      sentinal_func(util::map<AnyFunction::InvokeInput>(input_vals, [](auto& x) { return &x; }));
 
   BOOST_CHECK_EQUAL(1u, result.size());
 

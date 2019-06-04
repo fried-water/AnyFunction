@@ -37,7 +37,7 @@ FunctionGraph<std::tuple<int>, std::tuple<int>> create_graph(int depth) {
     int nodes_on_layer = 1 << layer;
     for(int i = 0; i < nodes_on_layer; i++) {
       edges.emplace(std::pair(layer, i), Delayed_sum(edges.at(std::pair(layer + 1, i * 2)),
-                                                edges.at(std::pair(layer + 1, i * 2 + 1))));
+                                                     edges.at(std::pair(layer + 1, i * 2 + 1))));
     }
   }
 
