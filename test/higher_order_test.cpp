@@ -2,6 +2,7 @@
 
 #include "executor/tbb_executor.h"
 #include "graph_execution.h"
+#include "sentinal.h"
 
 #define BOOST_TEST_DYN_LINK
 #include <boost/test/unit_test.hpp>
@@ -50,4 +51,28 @@ BOOST_AUTO_TEST_CASE(test_map_graph) {
   std::vector<int> expected{10, 20, 30};
 
   BOOST_CHECK(res == expected);
+}
+
+
+BOOST_AUTO_TEST_CASE(test_map_graph_sentinal) {
+  auto func = [](Sentinal x, const Sentinal& y, Sentinal z) {
+    std::cout << "X copies: " << x.copies << " moves: " << x.moves << "\n";
+    std::cout << "Y copies: " << y.copies << " moves: " << y.moves << "\n";
+    std::cout << "Z copies: " << z.copies << " moves: " << z.moves << "\n";
+    return x;
+  };
+  auto [map_cg, x, y, z] = make_graph<Sentinal, Sentinal, Sentinal>();
+  FunctionGraph multiply_g(std::move(map_cg), Delayed(func)(x, y, z));
+
+  auto [cg, vec, cy, cz] = make_graph<std::vector<Sentinal>, Sentinal, Sentinal>();
+  FunctionGraph g(std::move(cg), map(multiply_g, vec, cy, cz));
+
+  std::vector<Sentinal> input{Sentinal{}, Sentinal{}, Sentinal{}};
+  TBBExecutor executor;
+  auto res = execute_graph(g, executor, std::move(input), Sentinal{}, Sentinal{});
+
+  std::cout << "Results:\n";
+  for(const auto& sent : res) {
+    std::cout << "\tcopies: " << sent.copies << " moves: " << sent.moves << "\n";
+  }
 }

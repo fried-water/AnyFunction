@@ -12,7 +12,8 @@ header_files = [
   'include/util.h',
   'include/executor/sequential_executor.h',
   'include/executor/task_executor.h',
-  'include/executor/tbb_executor.h']
+  'include/executor/tbb_executor.h'
+]
 
 cpp_files = [
   'test/test_main.cpp',

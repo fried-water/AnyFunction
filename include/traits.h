@@ -35,6 +35,9 @@ struct is_tuple<std::tuple<Ts...>> : std::true_type {};
 template <typename T>
 constexpr bool is_tuple_v = is_tuple<T>::value;
 
+template<typename... Ts>
+using first_t = std::tuple_element_t<0, std::tuple<Ts...>>;
+
 template <template <typename> typename, typename>
 struct tuple_all_of;
 

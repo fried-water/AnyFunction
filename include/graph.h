@@ -104,7 +104,7 @@ struct Node {
   SmallVec<NodeEdge, 2> outputs;
 
   Node() = default;
-  Node(Execution execution) : func(Execution{std::move(execution)}) {}
+  explicit Node(Execution execution) : func(Execution{std::move(execution)}) {}
 };
 
 } // namespace graph
@@ -128,7 +128,7 @@ public:
 
   const std::vector<graph::Node>& nodes() const { return _nodes; }
 
-  std::conditional_t<sizeof...(Outputs) == 1, Edge<Outputs...>, std::tuple<Edge<Outputs>...>>
+  std::conditional_t<sizeof...(Outputs) == 1, Edge<traits::first_t<Outputs...>>, std::tuple<Edge<Outputs>...>>
   operator()(Edge<Inputs>... edges);
 
 private:
@@ -254,7 +254,7 @@ FunctionGraph<std::tuple<Outputs...>, std::tuple<Inputs...>>::FunctionGraph(
 }
 
 template <typename... Outputs, typename... Inputs>
-std::conditional_t<sizeof...(Outputs) == 1, Edge<Outputs...>, std::tuple<Edge<Outputs>...>>
+std::conditional_t<sizeof...(Outputs) == 1, Edge<traits::first_t<Outputs...>>, std::tuple<Edge<Outputs>...>>
 FunctionGraph<std::tuple<Outputs...>, std::tuple<Inputs...>>::operator()(Edge<Inputs>... edges) {
   using namespace graph;
   assert((edges.nodes == ...));
@@ -294,7 +294,7 @@ FunctionGraph<std::tuple<Outputs...>, std::tuple<Inputs...>>::operator()(Edge<In
   }
 
   if constexpr(sizeof...(Outputs) == 1) {
-    return Edge<std::tuple_element_t<0, std::tuple<Outputs...>>>{other_nodes, outputs[0]};
+    return Edge<traits::first_t<Outputs...>>{other_nodes, outputs[0]};
   } else {
     return output_edges<Outputs...>(other_nodes, outputs,
                                     std::make_index_sequence<sizeof...(Outputs)>());

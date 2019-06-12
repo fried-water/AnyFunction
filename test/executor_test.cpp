@@ -103,29 +103,25 @@ BOOST_AUTO_TEST_CASE(example_graph_task) {
   execute_graph_with_threads<TaskExecutor>(create_graph());
 }
 
-BOOST_AUTO_TEST_CASE(test_graph) {
-  auto take = [](int i) {
-    return Delayed([i](Sentinal sent) {
-      std::cout << "Take" << i << " " << sent.copies << " " << sent.moves << "\n";
-    });
-  };
-
-  auto take_ref = Delayed([](const Sentinal& sent) {
-    std::cout << "Ref "
-              << " " << sent.copies << " " << sent.moves << "\n";
+BOOST_AUTO_TEST_CASE(test_graph_input_sentinal) {
+  auto take = Delayed([](Sentinal sent) {
+    return sent;
   });
 
-  auto [cg, in1, in2] = make_graph<Sentinal, Sentinal>();
+  auto take_ref = Delayed([](const Sentinal& sent) {
+    BOOST_CHECK_EQUAL(0, sent.copies);
+    return sent;
+  });
 
-  take(1)(in1);
-  take(2)(in1);
-  take(3)(in2);
-  take_ref(in2);
+  auto [cg, s1, s2, s3] = make_graph<Sentinal, Sentinal, Sentinal>();
 
-  FunctionGraph g(std::move(cg), in2);
+  FunctionGraph g(std::move(cg), take(take(take(s1))), take(s2), s2, take_ref(s3), s3);
 
   SequentialExecutor executor;
-  Sentinal x = execute_graph(g, executor, Sentinal{}, Sentinal{});
-  std::cout << "Result "
-            << " " << x.copies << " " << x.moves << "\n";
+  auto [r1, r2, r3, r4, r5] = execute_graph(g, executor, Sentinal{}, Sentinal{}, Sentinal{});
+  BOOST_CHECK_EQUAL(0, r1.copies); // Move since s1 no other inputs
+  BOOST_CHECK_EQUAL(1, r2.copies); // s2 has two outputs first is copied
+  BOOST_CHECK_EQUAL(0, r3.copies); //   second is moved
+  BOOST_CHECK_EQUAL(1, r4.copies); // s3 must be copied through take_ref
+  BOOST_CHECK_EQUAL(1, r5.copies); // s3 cannot be moved since taken by ref elsewhere
 }
