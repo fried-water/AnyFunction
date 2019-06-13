@@ -1,5 +1,5 @@
 project('any_function', 'cpp', 
-  default_options : ['cpp_std=c++17', 'buildtype=release',
+  default_options : ['cpp_std=c++17', 'buildtype=debug',
     'warnlevel=3'])
 
 header_files = [
@@ -21,8 +21,8 @@ cpp_files = [
   'test/any_function_test.cpp',
   'test/graph_test.cpp',
   'test/higher_order_test.cpp',
-  'test/executor_test.cpp',
-  'test/stress_test.cpp'
+  #'test/executor_test.cpp',
+  #'test/stress_test.cpp'
 ]
 
 local_header_files = [
@@ -30,15 +30,17 @@ local_header_files = [
 
 incdir = include_directories('include')
 
+dl_dep = meson.get_compiler('cpp').find_library('dl', required : true)
+backtrace = meson.get_compiler('cpp').find_library('backtrace', required : true)
 tbb = dependency('tbb')
 thread = dependency('threads')
 boost = dependency('boost', modules : ['unit_test_framework'])
 
 executable('anyf_tests', 
   cpp_files,
-  dependencies : [tbb, boost, thread], 
+  dependencies : [tbb, boost, thread, dl_dep, backtrace], 
   include_directories : incdir,
-  cpp_args : ['-Wextra'])
+  cpp_args : ['-Wextra', '-g'])
 
 run_target('format',
   command : ['clang-format', '-i'] + header_files + cpp_files + local_header_files)

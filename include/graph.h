@@ -72,17 +72,12 @@ struct Execution {
   template <typename Executor>
   AnyFunction::InvokeResult operator()(Executor& executor,
                                        AnyFunction::InvokeInput&& inputs) const {
-    return std::visit(
-        [&](const auto& arg) {
-          using T = std::decay_t<decltype(arg)>;
-          if constexpr(std::is_same_v<T, AnyFunction>) {
-            return arg(std::move(inputs));
-          } else {
-            VirtualExecutorImpl virtual_executor{executor};
-            return (*arg)(virtual_executor, std::move(inputs));
-          }
-        },
-        variant);
+    if(std::holds_alternative<AnyFunction>(variant)) {
+      return std::get<AnyFunction>(variant)(std::move(inputs));
+    } else {
+      VirtualExecutorImpl virtual_executor{executor};
+      return (*std::get<std::shared_ptr<VirtualFunc>>(variant))(virtual_executor, std::move(inputs));
+    }
   }
 
   int num_inputs() const {

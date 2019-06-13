@@ -36,12 +36,11 @@ struct MapFunc : graph::VirtualFunc {
 
   FunctionGraph<std::tuple<Ret>, std::tuple<typename Container::value_type, ConstInputs...>> graph;
 
-  AnyFunction::InvokeResult operator()(graph::VirtualExecutor& executor,
+  SmallVec<std::any, 1> operator()(graph::VirtualExecutor& executor,
                                        AnyFunction::InvokeInput&& inputs) const override {
     int tg_id = executor.create_task_group();
 
     Container container = std::any_cast<Container>(std::move(*inputs[0]));
-
     std::vector<Ret> results(container.size());
 
     int i = 0;
@@ -56,7 +55,7 @@ struct MapFunc : graph::VirtualFunc {
 
     executor.wait_for_task_group(tg_id);
 
-    return AnyFunction::InvokeResult{std::move(results)};
+    return util::make_vector<SmallVec<std::any, 1>>(std::move(results));
   }
 };
 

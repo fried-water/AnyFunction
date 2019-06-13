@@ -1,6 +1,9 @@
 #ifndef SENTINAL_H
 #define SENTINAL_H
 
+#define BOOST_STACKTRACE_USE_BACKTRACE 
+#include <boost/stacktrace.hpp>
+
 struct Sentinal {
   int copies = 0;
   int moves = 0;
