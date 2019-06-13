@@ -60,7 +60,8 @@ public:
 };
 
 template <typename Anys, typename ToPtr>
-void propogate_outputs(FunctionTask& task, SmallVec<FunctionTask*, 10>& tasks_to_run, Anys& results, ToPtr to_ptr) {
+void propogate_outputs(FunctionTask& task, SmallVec<FunctionTask*, 10>& tasks_to_run, Anys& results,
+                       ToPtr to_ptr) {
   assert(std::all_of(results.begin(), results.end(),
                      [to_ptr](auto& any) { return to_ptr(any)->has_value(); }));
 
@@ -201,25 +202,27 @@ execute_graph(const FunctionGraph<std::tuple<Outputs...>, std::tuple<Inputs...>>
     for(auto it = node.outputs.begin(); it != node.outputs.end(); ++it) {
       const NodeEdge& edge = *it;
       ParameterEdge parameter_edge{tasks[edge.dst.node_id].get(), edge.src_arg, edge.dst.arg_idx};
-      if (edge.pb == PassBy::move) {
+      if(edge.pb == PassBy::move) {
         task->output_moves.push_back(parameter_edge);
       } else if(edge.pb == PassBy::ref) {
         task->output_refs.push_back(parameter_edge);
       } else {
         // If this output is not taken as a ref and not moved, convert last copy to a move
-        bool allow_move = std::find_if(node.outputs.begin(), it, [edge](const NodeEdge& edge2) {
-          return edge.src_arg == edge2.src_arg && edge2.pb != PassBy::copy;
-        }) == it && 
-          std::find_if(it+1, node.outputs.end(), [edge](const NodeEdge& edge2) {
-          return edge.src_arg == edge2.src_arg;
-        }) == node.outputs.end();
+        bool allow_move =
+            std::find_if(node.outputs.begin(), it,
+                         [edge](const NodeEdge& edge2) {
+                           return edge.src_arg == edge2.src_arg && edge2.pb != PassBy::copy;
+                         }) == it &&
+            std::find_if(it + 1, node.outputs.end(), [edge](const NodeEdge& edge2) {
+              return edge.src_arg == edge2.src_arg;
+            }) == node.outputs.end();
 
         if(allow_move) {
           task->output_moves.push_back(parameter_edge);
         } else {
           task->output_copies.push_back(parameter_edge);
         }
-      } 
+      }
     }
   });
 
@@ -262,7 +265,8 @@ execute_graph(const FunctionGraph<std::tuple<Outputs...>, std::tuple<std::decay_
   // This vector needs to survive for the runtime of execute graph
   auto any_values = util::make_vector<SmallVec<std::any, 3>>(std::forward<Inputs>(inputs)...);
 
-  auto results = execute_graph(g, executor, any_ptrs(any_values, std::make_index_sequence<sizeof...(Inputs)>()));
+  auto results = execute_graph(g, executor,
+                               any_ptrs(any_values, std::make_index_sequence<sizeof...(Inputs)>()));
 
   if constexpr(sizeof...(Outputs) == 1) {
     return std::any_cast<Outputs...>(std::move(results[0]));

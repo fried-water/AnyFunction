@@ -76,7 +76,8 @@ struct Execution {
       return std::get<AnyFunction>(variant)(std::move(inputs));
     } else {
       VirtualExecutorImpl virtual_executor{executor};
-      return (*std::get<std::shared_ptr<VirtualFunc>>(variant))(virtual_executor, std::move(inputs));
+      return (*std::get<std::shared_ptr<VirtualFunc>>(variant))(virtual_executor,
+                                                                std::move(inputs));
     }
   }
 
@@ -123,7 +124,8 @@ public:
 
   const std::vector<graph::Node>& nodes() const { return _nodes; }
 
-  std::conditional_t<sizeof...(Outputs) == 1, Edge<traits::first_t<Outputs...>>, std::tuple<Edge<Outputs>...>>
+  std::conditional_t<sizeof...(Outputs) == 1, Edge<traits::first_t<Outputs...>>,
+                     std::tuple<Edge<Outputs>...>>
   operator()(Edge<Inputs>... edges);
 
 private:
@@ -249,7 +251,8 @@ FunctionGraph<std::tuple<Outputs...>, std::tuple<Inputs...>>::FunctionGraph(
 }
 
 template <typename... Outputs, typename... Inputs>
-std::conditional_t<sizeof...(Outputs) == 1, Edge<traits::first_t<Outputs...>>, std::tuple<Edge<Outputs>...>>
+std::conditional_t<sizeof...(Outputs) == 1, Edge<traits::first_t<Outputs...>>,
+                   std::tuple<Edge<Outputs>...>>
 FunctionGraph<std::tuple<Outputs...>, std::tuple<Inputs...>>::operator()(Edge<Inputs>... edges) {
   using namespace graph;
   assert((edges.nodes == ...));

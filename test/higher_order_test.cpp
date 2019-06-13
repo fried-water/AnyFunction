@@ -24,7 +24,8 @@ int multiply(int x, const int& y, std::string str) { return x * (y + str.size())
 // }
 
 // BOOST_AUTO_TEST_CASE(test_accumulate) {
-//   auto sum = [](std::string x, int y, const char& base) { return x + static_cast<char>(base + y); };
+//   auto sum = [](std::string x, int y, const char& base) { return x + static_cast<char>(base + y);
+//   };
 
 //   auto [cg, vec, str, base] = make_graph<std::vector<int>, std::string, char>();
 //   FunctionGraph g(std::move(cg), accumulate(sum, vec, str, base));
@@ -52,7 +53,6 @@ int multiply(int x, const int& y, std::string str) { return x * (y + str.size())
 
 //   BOOST_CHECK(res == expected);
 // }
-
 
 BOOST_AUTO_TEST_CASE(test_map_graph_sentinal) {
   auto func = [](Sentinal x, const Sentinal& y, Sentinal z) {
