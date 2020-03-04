@@ -76,7 +76,7 @@ auto map(
   add_edges(make_types<std::tuple<typename Container::value_type, ConstInputs...>>(), *nodes,
             std::tuple(vec_edge, const_edges...),
             std::make_index_sequence<sizeof...(ConstInputs) + 1>());
-  nodes->emplace_back(std::move(map_node));
+  nodes->push_back(graph::Node{std::move(map_node)});
 
   return Edge<std::vector<Ret>>{nodes, {static_cast<int>(nodes->size() - 1), 0}};
 }

@@ -4,9 +4,9 @@
 #include "graph.h"
 #include "util.h"
 
-#include <boost/range/algorithm/for_each.hpp>
 #include <boost/range/combine.hpp>
 
+#include <algorithm>
 #include <atomic>
 #include <memory>
 #include <optional>
@@ -37,7 +37,7 @@ public:
   SmallVec<std::any, 3> input_vals;
 
   // Points to the location of the inputs, input_vals for copies/moves
-  // input_task.result for refs
+  // input_task.result of other tasks for refs
   SmallVec<std::any*, 3> input_ptrs;
 
   // Buffer to hold the results of the function
@@ -85,14 +85,14 @@ void propogate_outputs(FunctionTask& task, SmallVec<FunctionTask*, 10>& tasks_to
   };
 
   // Copy all indices
-  boost::for_each(task.output_copies, [&](const auto& edge) {
+  for(const auto& edge : task.output_copies) {
     propogate_val(edge, *to_ptr(results[edge.output_term]), tasks_to_run);
-  });
+  }
 
   // Set up refs
-  boost::for_each(task.output_refs, [&](const auto& edge) {
+  for(const auto& edge : task.output_refs) {
     propogate_ref(edge, to_ptr(results[edge.output_term]), tasks_to_run);
-  });
+  }
 
   auto output_term_compare = [](const auto& e1, const auto& e2) {
     return e1.output_term < e2.output_term;
@@ -106,8 +106,8 @@ void propogate_outputs(FunctionTask& task, SmallVec<FunctionTask*, 10>& tasks_to
   auto move_it = task.output_moves.begin();
 
   for(int i = 0; i < static_cast<int>(results.size()); i++) {
-    bool has_move = move_it != task.output_moves.end() && move_it->output_term == i;
-    bool has_ref = ref_it != task.output_refs.end() && ref_it->output_term == i;
+    const bool has_move = move_it != task.output_moves.end() && move_it->output_term == i;
+    const bool has_ref = ref_it != task.output_refs.end() && ref_it->output_term == i;
 
     // If the output is taken by ref, set up data to properly clean up/forward the value
     if(has_ref) {
@@ -136,8 +136,8 @@ void propogate_outputs(FunctionTask& task, SmallVec<FunctionTask*, 10>& tasks_to
   }
 }
 
-template <typename Executor, typename TaskGroupId>
-void execute_task(Executor& executor, FunctionTask& task, TaskGroupId id) {
+template <typename Executor>
+void execute_task(Executor& executor, FunctionTask& task, int task_group_id) {
   task.results = (*task.func)(executor, std::move(task.input_ptrs));
 
   SmallVec<FunctionTask*, 10> tasks_to_run;
@@ -146,7 +146,7 @@ void execute_task(Executor& executor, FunctionTask& task, TaskGroupId id) {
 
   // If we took anything by reference we potentially have to clean up the value
   // or move it to its final destination
-  boost::for_each(task.ref_forwards, [&tasks_to_run](RefCleanup* cleanup) {
+  for(RefCleanup* cleanup : task.ref_forwards) {
     if(!cleanup)
       return;
     if(cleanup->ref_count.fetch_sub(1, std::memory_order_release) - 1 == 0) {
@@ -165,11 +165,11 @@ void execute_task(Executor& executor, FunctionTask& task, TaskGroupId id) {
 
       delete cleanup;
     }
-  });
+  }
 
-  boost::for_each(tasks_to_run, [&executor, id](FunctionTask* task) {
-    executor.async(id, [&executor, task, id]() { execute_task(executor, *task, id); });
-  });
+  for(FunctionTask* task : tasks_to_run) {
+    executor.async(task_group_id, [&]() { execute_task(executor, *task, task_group_id); });
+  }
 }
 
 template <typename... Outputs, typename Executor, typename... Inputs>
@@ -195,7 +195,7 @@ execute_graph(const FunctionGraph<std::tuple<Outputs...>, std::tuple<Inputs...>>
   tasks.push_back(std::make_unique<FunctionTask>(std::nullopt, sizeof...(Outputs) + 1));
 
   // Connect outputs
-  boost::for_each(boost::combine(g.nodes(), tasks), [&tasks](const auto& tuple) {
+  for(const auto& tuple : boost::combine(g.nodes(), tasks)) {
     const auto& node = boost::get<0>(tuple);
     auto& task = boost::get<1>(tuple);
 
@@ -208,7 +208,7 @@ execute_graph(const FunctionGraph<std::tuple<Outputs...>, std::tuple<Inputs...>>
         task->output_refs.push_back(parameter_edge);
       } else {
         // If this output is not taken as a ref and not moved, convert last copy to a move
-        bool allow_move =
+        const bool allow_move =
             std::find_if(node.outputs.begin(), it,
                          [edge](const NodeEdge& edge2) {
                            return edge.src_arg == edge2.src_arg && edge2.pb != PassBy::copy;
@@ -224,16 +224,16 @@ execute_graph(const FunctionGraph<std::tuple<Outputs...>, std::tuple<Inputs...>>
         }
       }
     }
-  });
+  }
 
   SmallVec<FunctionTask*, 10> tasks_to_run;
 
   // Add 0 input tasks
-  boost::for_each(tasks, [&tasks_to_run](auto& task) {
+  for(auto& task : tasks) {
     if(task->ref_count() == 0) {
       tasks_to_run.push_back(task.get());
     }
-  });
+  }
 
   // Propogate inputs
   propogate_outputs(*tasks.front(), tasks_to_run, inputs, [](std::any* any) { return any; });
@@ -241,11 +241,9 @@ execute_graph(const FunctionGraph<std::tuple<Outputs...>, std::tuple<Inputs...>>
   auto task_group_id = executor.create_task_group();
 
   // launch tasks
-  boost::for_each(tasks_to_run, [&executor, task_group_id](FunctionTask* task) {
-    executor.async(task_group_id, [&executor, task, task_group_id]() {
-      execute_task(executor, *task, task_group_id);
-    });
-  });
+  for(FunctionTask* task : tasks_to_run) {
+    executor.async(task_group_id, [&]() { execute_task(executor, *task, task_group_id); });
+  }
 
   executor.wait_for_task_group(task_group_id);
 

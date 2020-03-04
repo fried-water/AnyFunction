@@ -23,7 +23,7 @@ struct Term {
   int node_id;
   int arg_idx;
   friend bool operator==(const Term t1, const Term t2) {
-    return t1.node_id == t2.node_id && t1.arg_idx == t2.arg_idx;
+    return std::tie(t1.node_id, t1.arg_idx) == std::tie(t2.node_id, t2.arg_idx);
   }
 };
 
@@ -33,7 +33,7 @@ struct NodeEdge {
   PassBy pb;
 
   friend bool operator==(const NodeEdge e1, const NodeEdge e2) {
-    return e1.src_arg == e2.src_arg && e1.dst == e2.dst && e1.pb == e2.pb;
+    return std::tie(e1.src_arg, e1.dst, e1.pb) == std::tie(e2.src_arg, e2.dst, e2.pb);
   }
 };
 
@@ -96,11 +96,8 @@ struct Execution {
 };
 
 struct Node {
-  std::optional<Execution> func;
-  SmallVec<NodeEdge, 2> outputs;
-
-  Node() = default;
-  explicit Node(Execution execution) : func(Execution{std::move(execution)}) {}
+  std::optional<Execution> func = {};
+  SmallVec<NodeEdge, 1> outputs = {};
 };
 
 } // namespace graph
@@ -176,8 +173,7 @@ void add_edges(const Types& types, std::vector<graph::Node>& nodes,
 
 template <typename Inputs>
 class ConstructingGraph {
-  ConstructingGraph() : _nodes(std::make_unique<std::vector<graph::Node>>()) {}
-  std::unique_ptr<std::vector<graph::Node>> _nodes;
+  std::unique_ptr<std::vector<graph::Node>> _nodes = std::make_unique<std::vector<graph::Node>>();
 
   template <typename... Ts>
   friend std::tuple<ConstructingGraph<std::tuple<Ts...>>, Edge<Ts>...> make_graph();
@@ -203,7 +199,7 @@ class Delayed<std::tuple<Outputs...>, std::tuple<Inputs...>> {
     std::vector<graph::Node>* nodes = std::get<0>(std::tie(edges...)).nodes;
     add_edges(any_function.input_types(), *nodes, std::tuple(std::move(edges)...),
               std::make_index_sequence<sizeof...(Inputs)>());
-    nodes->emplace_back(std::move(any_function));
+    nodes->push_back(graph::Node{std::move(any_function)});
 
     if constexpr(sizeof...(Outputs) == 1) {
       return Edge<std::tuple_element_t<0, std::tuple<Outputs...>>>{
@@ -215,7 +211,7 @@ class Delayed<std::tuple<Outputs...>, std::tuple<Inputs...>> {
 
 public:
   template <typename F>
-  Delayed(F f) : _any_function(AnyFunction(std::move(f))) {}
+  Delayed(F f) : _any_function(std::move(f)) {}
 
   auto operator()(Edge<Inputs>... inputs) && {
     return add_to_graph(std::move(_any_function), inputs...);
@@ -266,7 +262,7 @@ FunctionGraph<std::tuple<Outputs...>, std::tuple<Inputs...>>::operator()(Edge<In
     const Node& node = nodes()[i];
 
     assert(node.func);
-    other_nodes->emplace_back(*node.func);
+    other_nodes->push_back(graph::Node{node.func});
 
     for(int j = 0; j < i; j++) {
       for(const NodeEdge& edge : nodes()[j].outputs) {
