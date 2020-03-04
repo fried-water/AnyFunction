@@ -61,7 +61,7 @@ BOOST_AUTO_TEST_CASE(stress_test) {
             << std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0).count() << "ms\n";
 
   t0 = std::chrono::steady_clock::now();
-  int result;
+  int result = -1;
   for(int i = 0; i < num_executions; i++) {
     result = execute_graph(g, executor, 1);
   }

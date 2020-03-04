@@ -21,8 +21,8 @@ cpp_files = [
   'test/any_function_test.cpp',
   'test/graph_test.cpp',
   'test/higher_order_test.cpp',
-  #'test/executor_test.cpp',
-  #'test/stress_test.cpp'
+  'test/executor_test.cpp',
+  'test/stress_test.cpp'
 ]
 
 local_header_files = [

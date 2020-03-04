@@ -93,10 +93,10 @@ BOOST_AUTO_TEST_CASE(test_name) {
   BOOST_CHECK_EQUAL("int", make_type<int>().name());
   BOOST_CHECK_EQUAL("const int", make_type<const int>().name());
   BOOST_CHECK_EQUAL("int&", make_type<int&>().name());
-  BOOST_CHECK_EQUAL("int const&", make_type<int const&>().name());
+  BOOST_CHECK_EQUAL("const int&", make_type<int const&>().name());
 
   BOOST_CHECK_EQUAL("my_namespace::MyType", make_type<my_namespace::MyType>().name());
   BOOST_CHECK_EQUAL("const my_namespace::MyType", make_type<const my_namespace::MyType>().name());
   BOOST_CHECK_EQUAL("my_namespace::MyType&", make_type<my_namespace::MyType&>().name());
-  BOOST_CHECK_EQUAL("my_namespace::MyType const&", make_type<my_namespace::MyType const&>().name());
+  BOOST_CHECK_EQUAL("const my_namespace::MyType&", make_type<my_namespace::MyType const&>().name());
 }

@@ -147,9 +147,7 @@ void execute_task(Executor& executor, FunctionTask& task, int task_group_id) {
   // If we took anything by reference we potentially have to clean up the value
   // or move it to its final destination
   for(RefCleanup* cleanup : task.ref_forwards) {
-    if(!cleanup)
-      return;
-    if(cleanup->ref_count.fetch_sub(1, std::memory_order_release) - 1 == 0) {
+    if(cleanup && cleanup->ref_count.fetch_sub(1, std::memory_order_release) - 1 == 0) {
       if(cleanup->dst) {
         ParameterEdge dst = *cleanup->dst;
 
@@ -168,7 +166,7 @@ void execute_task(Executor& executor, FunctionTask& task, int task_group_id) {
   }
 
   for(FunctionTask* task : tasks_to_run) {
-    executor.async(task_group_id, [&]() { execute_task(executor, *task, task_group_id); });
+    executor.async(task_group_id, [&executor, task, task_group_id]() { execute_task(executor, *task, task_group_id); });
   }
 }
 
@@ -218,6 +216,7 @@ execute_graph(const FunctionGraph<std::tuple<Outputs...>, std::tuple<Inputs...>>
             }) == node.outputs.end();
 
         if(allow_move) {
+
           task->output_moves.push_back(parameter_edge);
         } else {
           task->output_copies.push_back(parameter_edge);
@@ -242,7 +241,7 @@ execute_graph(const FunctionGraph<std::tuple<Outputs...>, std::tuple<Inputs...>>
 
   // launch tasks
   for(FunctionTask* task : tasks_to_run) {
-    executor.async(task_group_id, [&]() { execute_task(executor, *task, task_group_id); });
+    executor.async(task_group_id, [&executor, task, task_group_id]() { execute_task(executor, *task, task_group_id); });
   }
 
   executor.wait_for_task_group(task_group_id);

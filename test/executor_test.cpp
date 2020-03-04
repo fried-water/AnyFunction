@@ -72,8 +72,8 @@ auto create_graph() {
 
 template <typename Executor, typename Graph>
 void execute_graph_with_threads(Graph g) {
-  int size = 100'000;
-  int max_threads = 8;
+  const int size = 100'000;
+  const int max_threads = 8;
 
   for(int num_threads = 1; num_threads <= max_threads; num_threads++) {
     Executor executor(num_threads);
@@ -93,14 +93,14 @@ BOOST_AUTO_TEST_CASE(example_graph_tbb) {
   execute_graph_with_threads<TBBExecutor>(create_graph());
 }
 
-BOOST_AUTO_TEST_CASE(example_graph_seq) {
-  std::cout << "\nExecuting graph Sequentially\n\n";
-  execute_graph_with_threads<SequentialExecutor>(create_graph());
-}
-
 BOOST_AUTO_TEST_CASE(example_graph_task) {
   std::cout << "\nExecuting graph with custom task system\n\n";
   execute_graph_with_threads<TaskExecutor>(create_graph());
+}
+
+BOOST_AUTO_TEST_CASE(example_graph_seq) {
+  std::cout << "\nExecuting graph Sequentially\n\n";
+  execute_graph_with_threads<SequentialExecutor>(create_graph());
 }
 
 BOOST_AUTO_TEST_CASE(test_graph_input_sentinal) {
