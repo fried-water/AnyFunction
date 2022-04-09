@@ -6,8 +6,8 @@ struct Sentinal {
 
   Sentinal() = default;
 
-  Sentinal(const Sentinal& x) : copies(x.copies), moves(x.moves) { ++copies; }
-  Sentinal(Sentinal&& x) : copies(x.copies), moves(x.moves) { ++moves; }
+  Sentinal(const Sentinal& x) : copies(x.copies + 1), moves(x.moves) {}
+  Sentinal(Sentinal&& x) : copies(x.copies), moves(x.moves + 1) {}
 
   Sentinal& operator=(const Sentinal& x) {
     copies = x.copies + 1;

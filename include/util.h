@@ -1,19 +1,11 @@
 #pragma once
 
-#include <boost/container/small_vector.hpp>
-
 #include <any>
 #include <functional>
 #include <tuple>
 #include <vector>
 
 namespace anyf {
-
-template <typename T, std::size_t N>
-using SmallVec = boost::container::small_vector<T, N>;
-
-template <typename T>
-using SmallVecBase = boost::container::small_vector_base<T>;
 
 struct Identity {
   template <typename T>
@@ -24,22 +16,12 @@ struct Identity {
 
 namespace util {
 
-template <typename Vec, typename... Elements>
-Vec make_vector(Elements&&... elements) {
-  Vec vec;
+template <typename T, typename... Elements>
+std::vector<T> make_vector(Elements&&... elements) {
+  std::vector<T> vec;
   vec.reserve(sizeof...(Elements));
   (vec.emplace_back(std::forward<Elements>(elements)), ...);
   return vec;
-}
-
-template <typename T, typename... Elements>
-auto make_std_vector(Elements&&... elements) {
-  return make_vector<std::vector<T>>(std::forward<Elements>(elements)...);
-}
-
-template <typename T, std::size_t N, typename... Elements>
-auto make_small_vector(Elements&&... elements) {
-  return make_vector<SmallVec<T, N>>(std::forward<Elements>(elements)...);
 }
 
 template <typename OutputContainer, typename InputContainer, typename Transform>

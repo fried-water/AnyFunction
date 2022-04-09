@@ -58,8 +58,8 @@ struct VirtualFunc {
   int num_inputs;
   VirtualFunc(int num_inputs) : num_inputs(num_inputs) {}
   virtual ~VirtualFunc() = default;
-  virtual AnyFunction::InvokeResult operator()(VirtualExecutor& executor,
-                                               AnyFunction::InvokeInput&& inputs) const = 0;
+  virtual std::vector<std::any> operator()(VirtualExecutor& executor,
+                                           std::vector<std::any*>&& inputs) const = 0;
 };
 
 struct Execution {
@@ -69,8 +69,7 @@ struct Execution {
   Execution(std::shared_ptr<VirtualFunc> virt_func) : variant(std::move(virt_func)) {}
 
   template <typename Executor>
-  AnyFunction::InvokeResult operator()(Executor& executor,
-                                       AnyFunction::InvokeInput&& inputs) const {
+  std::vector<std::any> operator()(Executor& executor, std::vector<std::any*>&& inputs) const {
     if(std::holds_alternative<AnyFunction>(variant)) {
       return std::get<AnyFunction>(variant)(std::move(inputs));
     } else {
@@ -96,7 +95,7 @@ struct Execution {
 
 struct Node {
   std::optional<Execution> func = {};
-  SmallVec<NodeEdge, 1> outputs = {};
+  std::vector<NodeEdge> outputs = {};
 };
 
 } // namespace graph
@@ -114,13 +113,13 @@ template <typename Outputs, typename Inputs>
 class FunctionGraph;
 
 template <typename... Outputs, typename... Inputs>
-class FunctionGraph<std::tuple<Outputs...>, std::tuple<Inputs...>> {
+class FunctionGraph<TL<Outputs...>, TL<Inputs...>> {
 public:
-  explicit FunctionGraph(ConstructingGraph<std::tuple<Inputs...>> cg, Edge<Outputs>... edges);
+  explicit FunctionGraph(ConstructingGraph<TL<Inputs...>> cg, Edge<Outputs>... edges);
 
   const std::vector<graph::Node>& nodes() const { return _nodes; }
 
-  std::conditional_t<sizeof...(Outputs) == 1, Edge<traits::first_t<Outputs...>>,
+  std::conditional_t<sizeof...(Outputs) == 1, Edge<std::tuple_element_t<0, std::tuple<Outputs...>>>,
                      std::tuple<Edge<Outputs>...>>
   operator()(Edge<Inputs>... edges);
 
@@ -129,13 +128,13 @@ private:
 };
 
 template <typename... Outputs, typename... Inputs>
-FunctionGraph(ConstructingGraph<std::tuple<Inputs...>> cg, Edge<Outputs>... edges)
-    -> FunctionGraph<std::tuple<Outputs...>, std::tuple<Inputs...>>;
+FunctionGraph(ConstructingGraph<TL<Inputs...>> cg, Edge<Outputs>... edges)
+    -> FunctionGraph<TL<Outputs...>, TL<Inputs...>>;
 
-constexpr PassBy pass_by_of(const Type& type) {
-  if(type.is_ref()) {
+constexpr PassBy pass_by_of(const Type& t) {
+  if(t.is_ref()) {
     return PassBy::ref;
-  } else if(!type.is_copy_constructible()) {
+  } else if(!t.is_copy_constructible()) {
     return PassBy::move;
   }
   return PassBy::copy;
@@ -175,7 +174,7 @@ class ConstructingGraph {
   std::unique_ptr<std::vector<graph::Node>> _nodes = std::make_unique<std::vector<graph::Node>>();
 
   template <typename... Ts>
-  friend std::tuple<ConstructingGraph<std::tuple<Ts...>>, Edge<Ts>...> make_graph();
+  friend std::tuple<ConstructingGraph<TL<Ts...>>, Edge<Ts>...> make_graph();
 
   template <typename FOutputs, typename FInputs>
   friend class FunctionGraph;
@@ -188,7 +187,7 @@ template <typename Outputs, typename Inputs>
 class Delayed;
 
 template <typename... Outputs, typename... Inputs>
-class Delayed<std::tuple<Outputs...>, std::tuple<Inputs...>> {
+class Delayed<TL<Outputs...>, TL<Inputs...>> {
   static_assert(sizeof...(Inputs) > 0);
 
   AnyFunction _any_function;
@@ -220,13 +219,12 @@ public:
 };
 
 template <typename F>
-Delayed(F f) -> Delayed<traits::tuple_wrap_t<traits::function_return_t<F>>,
-                        traits::tuple_map_t<std::decay, traits::function_args_t<F>>>;
+Delayed(F f) -> Delayed<decltype(as_tl(return_type<F>())), decltype(decay(args<F>()))>;
 
 template <typename... Inputs>
-std::tuple<ConstructingGraph<std::tuple<Inputs...>>, Edge<Inputs>...> make_graph() {
+std::tuple<ConstructingGraph<TL<Inputs...>>, Edge<Inputs>...> make_graph() {
   static_assert(sizeof...(Inputs) > 0);
-  ConstructingGraph<std::tuple<Inputs...>> g;
+  ConstructingGraph<TL<Inputs...>> g;
   auto nodes = g._nodes.get();
   nodes->emplace_back();
   return std::tuple_cat(
@@ -235,8 +233,8 @@ std::tuple<ConstructingGraph<std::tuple<Inputs...>>, Edge<Inputs>...> make_graph
 }
 
 template <typename... Outputs, typename... Inputs>
-FunctionGraph<std::tuple<Outputs...>, std::tuple<Inputs...>>::FunctionGraph(
-    ConstructingGraph<std::tuple<Inputs...>> cg, Edge<Outputs>... edges) {
+FunctionGraph<TL<Outputs...>, TL<Inputs...>>::FunctionGraph(ConstructingGraph<TL<Inputs...>> cg,
+                                                            Edge<Outputs>... edges) {
   assert(((edges.nodes == cg._nodes.get()) && ...)); // all edges must come from cg
   add_edges(std::array<Type, sizeof...(Outputs)>{make_type<Outputs>()...}, *cg._nodes,
             std::tuple(std::move(edges)...), std::make_index_sequence<sizeof...(Outputs)>());
@@ -245,9 +243,9 @@ FunctionGraph<std::tuple<Outputs...>, std::tuple<Inputs...>>::FunctionGraph(
 }
 
 template <typename... Outputs, typename... Inputs>
-std::conditional_t<sizeof...(Outputs) == 1, Edge<traits::first_t<Outputs...>>,
+std::conditional_t<sizeof...(Outputs) == 1, Edge<std::tuple_element_t<0, std::tuple<Outputs...>>>,
                    std::tuple<Edge<Outputs>...>>
-FunctionGraph<std::tuple<Outputs...>, std::tuple<Inputs...>>::operator()(Edge<Inputs>... edges) {
+FunctionGraph<TL<Outputs...>, TL<Inputs...>>::operator()(Edge<Inputs>... edges) {
   using namespace graph;
   assert((edges.nodes == ...));
   std::vector<Node>* other_nodes = std::get<0>(std::tie(edges...)).nodes;
@@ -286,7 +284,7 @@ FunctionGraph<std::tuple<Outputs...>, std::tuple<Inputs...>>::operator()(Edge<In
   }
 
   if constexpr(sizeof...(Outputs) == 1) {
-    return Edge<traits::first_t<Outputs...>>{other_nodes, outputs[0]};
+    return Edge<std::tuple_element_t<0, std::tuple<Outputs...>>>{other_nodes, outputs[0]};
   } else {
     return output_edges<Outputs...>(other_nodes, outputs,
                                     std::make_index_sequence<sizeof...(Outputs)>());

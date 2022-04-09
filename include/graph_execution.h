@@ -31,22 +31,22 @@ public:
   std::optional<graph::Execution> func;
 
   // Stores the values of the inputs for copy/move parameters
-  SmallVec<std::any, 3> input_vals;
+  std::vector<std::any> input_vals;
 
   // Points to the location of the inputs, input_vals for copies/moves
   // input_task.result of other tasks for refs
-  SmallVec<std::any*, 3> input_ptrs;
+  std::vector<std::any*> input_ptrs;
 
   // Buffer to hold the results of the function
-  SmallVec<std::any, 1> results;
+  std::vector<std::any> results;
 
   // Information on where to send the output
-  SmallVec<ParameterEdge, 3> output_moves;
-  SmallVec<ParameterEdge, 3> output_copies;
-  SmallVec<ParameterEdge, 3> output_refs;
+  std::vector<ParameterEdge> output_moves;
+  std::vector<ParameterEdge> output_copies;
+  std::vector<ParameterEdge> output_refs;
 
   // Clean up any references to data we used
-  SmallVec<RefCleanup*, 3> ref_forwards;
+  std::vector<RefCleanup*> ref_forwards;
 
   int decrement_ref_count() { return _ref_count.fetch_sub(1, std::memory_order_release) - 1; }
   int ref_count() { return _ref_count.load(std::memory_order_acquire); }
@@ -57,13 +57,13 @@ public:
 };
 
 template <typename Anys, typename ToPtr>
-void propogate_outputs(FunctionTask& task, SmallVec<FunctionTask*, 10>& tasks_to_run, Anys& results,
+void propogate_outputs(FunctionTask& task, std::vector<FunctionTask*>& tasks_to_run, Anys& results,
                        ToPtr to_ptr) {
   assert(std::all_of(results.begin(), results.end(),
                      [to_ptr](auto& any) { return to_ptr(any)->has_value(); }));
 
   auto propogate_ref = [](const ParameterEdge& edge, std::any* result,
-                          SmallVec<FunctionTask*, 10>& tasks_to_run) {
+                          std::vector<FunctionTask*>& tasks_to_run) {
     edge.task->input_ptrs[edge.input_term] = result;
 
     if(edge.task->decrement_ref_count() == 0) {
@@ -72,7 +72,7 @@ void propogate_outputs(FunctionTask& task, SmallVec<FunctionTask*, 10>& tasks_to
   };
 
   auto propogate_val = [](const ParameterEdge& edge, std::any result,
-                          SmallVec<FunctionTask*, 10>& tasks_to_run) {
+                          std::vector<FunctionTask*>& tasks_to_run) {
     edge.task->input_vals[edge.input_term] = std::move(result);
     edge.task->input_ptrs[edge.input_term] = &edge.task->input_vals[edge.input_term];
 
@@ -137,7 +137,7 @@ template <typename Executor>
 void execute_task(Executor& executor, FunctionTask& task, int task_group_id) {
   task.results = (*task.func)(executor, std::move(task.input_ptrs));
 
-  SmallVec<FunctionTask*, 10> tasks_to_run;
+  std::vector<FunctionTask*> tasks_to_run;
 
   propogate_outputs(task, tasks_to_run, task.results, [](std::any& any) { return &any; });
 
@@ -170,12 +170,12 @@ void execute_task(Executor& executor, FunctionTask& task, int task_group_id) {
 }
 
 template <typename... Outputs, typename Executor, typename... Inputs>
-SmallVec<std::any, 3>
-execute_graph(const FunctionGraph<std::tuple<Outputs...>, std::tuple<Inputs...>>& g,
-              Executor& executor, std::array<std::any*, sizeof...(Inputs)> inputs) {
+std::vector<std::any> execute_graph(const FunctionGraph<TL<Outputs...>, TL<Inputs...>>& g,
+                                    Executor& executor,
+                                    std::array<std::any*, sizeof...(Inputs)> inputs) {
   using namespace anyf::graph;
 
-  SmallVec<std::unique_ptr<FunctionTask>, 10> tasks;
+  std::vector<std::unique_ptr<FunctionTask>> tasks;
   tasks.reserve(g.nodes().size());
 
   // Create input task
@@ -224,7 +224,7 @@ execute_graph(const FunctionGraph<std::tuple<Outputs...>, std::tuple<Inputs...>>
     }
   }
 
-  SmallVec<FunctionTask*, 10> tasks_to_run;
+  std::vector<FunctionTask*> tasks_to_run;
 
   // Add 0 input tasks
   for(auto& task : tasks) {
@@ -251,17 +251,17 @@ execute_graph(const FunctionGraph<std::tuple<Outputs...>, std::tuple<Inputs...>>
 }
 
 template <std::size_t... Is>
-auto any_ptrs(SmallVec<std::any, 3>& any_vals, std::index_sequence<Is...>) {
+auto any_ptrs(std::vector<std::any>& any_vals, std::index_sequence<Is...>) {
   return std::array<std::any*, sizeof...(Is)>{&any_vals[Is]...};
 }
 
 template <typename... Outputs, typename Executor, typename... Inputs>
 std::conditional_t<sizeof...(Outputs) == 1, std::tuple_element_t<0, std::tuple<Outputs...>>,
                    std::tuple<Outputs...>>
-execute_graph(const FunctionGraph<std::tuple<Outputs...>, std::tuple<std::decay_t<Inputs>...>>& g,
+execute_graph(const FunctionGraph<TL<Outputs...>, TL<std::decay_t<Inputs>...>>& g,
               Executor& executor, Inputs&&... inputs) {
   // This vector needs to survive for the runtime of execute graph
-  auto any_values = util::make_vector<SmallVec<std::any, 3>>(std::forward<Inputs>(inputs)...);
+  auto any_values = util::make_vector<std::any>(std::forward<Inputs>(inputs)...);
 
   auto results = execute_graph(g, executor,
                                any_ptrs(any_values, std::make_index_sequence<sizeof...(Inputs)>()));

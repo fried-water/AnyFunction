@@ -20,7 +20,7 @@ struct IntPairHash {
   }
 };
 
-FunctionGraph<std::tuple<int>, std::tuple<int>> create_graph(int depth) {
+auto create_graph(int depth) {
   std::unordered_map<std::pair<int, int>, Edge<int>, IntPairHash> edges;
 
   auto Delayed_copy = Delayed(identity);
@@ -42,6 +42,7 @@ FunctionGraph<std::tuple<int>, std::tuple<int>> create_graph(int depth) {
 
   return FunctionGraph(std::move(g), edges.at(std::pair(0, 0)));
 }
+
 } // namespace
 
 BOOST_AUTO_TEST_CASE(stress_test) {

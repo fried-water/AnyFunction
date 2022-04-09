@@ -2,7 +2,6 @@
 
 #include "sentinal.h"
 
-#include <boost/range/algorithm/equal.hpp>
 #include <boost/test/unit_test.hpp>
 
 using namespace anyf;
@@ -11,9 +10,9 @@ namespace {
 
 template <typename... Outputs, typename... Inputs>
 std::tuple<Outputs...> invoke_with_values(AnyFunction func, Inputs... inputs) {
-  auto any_vec = util::make_small_vector<std::any, 3>(inputs...);
+  auto any_vec = util::make_vector<std::any>(inputs...);
 
-  auto result = func(util::map<AnyFunction::InvokeInput>(any_vec, [](auto& x) { return &x; }));
+  auto result = func(util::map<std::vector<std::any*>>(any_vec, [](auto& x) { return &x; }));
 
   BOOST_CHECK(sizeof...(Outputs) == result.size());
 
@@ -35,10 +34,9 @@ BOOST_AUTO_TEST_CASE(test_any_function_return_types) {
   const auto single_func = AnyFunction(simple_fp);
   const auto tuple_func = AnyFunction(tuple_fp);
 
-  BOOST_CHECK(boost::equal(std::vector<Type>{}, void_func.output_types()));
-  BOOST_CHECK(boost::equal(std::vector<Type>{make_type<int>()}, single_func.output_types()));
-  BOOST_CHECK(
-      boost::equal(std::vector{make_type<char>(), make_type<int>()}, tuple_func.output_types()));
+  BOOST_CHECK(std::vector<Type>{} == void_func.output_types());
+  BOOST_CHECK(std::vector<Type>{make_type<int>()} == single_func.output_types());
+  BOOST_CHECK((std::vector{make_type<char>(), make_type<int>()}) == tuple_func.output_types());
 
   BOOST_CHECK(std::tuple() == invoke_with_values(void_func));
   BOOST_CHECK(std::tuple(1) == invoke_with_values<int>(single_func));
@@ -50,11 +48,10 @@ BOOST_AUTO_TEST_CASE(test_any_function_input_types) {
   const auto one_arg_func = AnyFunction(one_arg);
   const auto many_args_func = AnyFunction(many_args);
 
-  BOOST_CHECK(boost::equal(std::vector<Type>{}, no_args_func.input_types()));
-  BOOST_CHECK(boost::equal(std::vector<Type>{make_type<int>()}, one_arg_func.input_types()));
-  BOOST_CHECK(boost::equal(std::vector<Type>{make_type<std::tuple<>>(), make_type<std::string>(),
-                                             make_type<char const&>()},
-                           many_args_func.input_types()));
+  BOOST_CHECK(std::vector<Type>{} == no_args_func.input_types());
+  BOOST_CHECK(std::vector<Type>{make_type<int>()} == one_arg_func.input_types());
+  BOOST_CHECK((std::vector<Type>{make_type<std::tuple<>>(), make_type<std::string>(),
+                                 make_type<char const&>()}) == many_args_func.input_types());
 }
 
 bool valid_exception(std::bad_any_cast const&) { return true; }
@@ -93,10 +90,10 @@ BOOST_AUTO_TEST_CASE(test_any_function_num_moves_copies) {
     return Sentinal{};
   });
 
-  auto input_vals = util::make_small_vector<std::any, 3>(Sentinal{}, Sentinal{});
+  auto input_vals = util::make_vector<std::any>(Sentinal{}, Sentinal{});
 
   auto result =
-      sentinal_func(util::map<AnyFunction::InvokeInput>(input_vals, [](auto& x) { return &x; }));
+      sentinal_func(util::map<std::vector<std::any*>>(input_vals, [](auto& x) { return &x; }));
 
   BOOST_CHECK_EQUAL(1u, result.size());
 

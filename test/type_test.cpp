@@ -35,6 +35,20 @@ struct NoCopyNoMoveType {
 
 } // namespace
 
+BOOST_AUTO_TEST_CASE(test_type_equality) {
+  BOOST_CHECK(make_type<int>() == make_type<int>());
+  BOOST_CHECK(make_type<int&>() == make_type<int&>());
+  BOOST_CHECK(make_type<const int>() == make_type<const int>());
+  BOOST_CHECK(make_type<const int&>() == make_type<const int&>());
+  BOOST_CHECK(make_type<int>() != make_type<float>());
+  BOOST_CHECK(make_type<int>() != make_type<int&>());
+
+  BOOST_CHECK(make_type<int>().type_id() == make_type<const int&>().type_id());
+
+  BOOST_CHECK(make_type<MyType>() == make_type<MyType>());
+  BOOST_CHECK(make_type<MyType>() != make_type<my_namespace::MyType>());
+}
+
 BOOST_AUTO_TEST_CASE(test_const_types) {
   BOOST_CHECK_EQUAL(false, make_type<int>().is_const());
   BOOST_CHECK_EQUAL(false, make_type<std::string>().is_const());
@@ -86,16 +100,4 @@ BOOST_AUTO_TEST_CASE(test_is_move_constructible) {
   BOOST_CHECK_EQUAL(false, make_type<ExplicitCopyOnlyType>().is_move_constructible());
   BOOST_CHECK_EQUAL(true, make_type<MoveOnlyType>().is_move_constructible());
   BOOST_CHECK_EQUAL(false, make_type<NoCopyNoMoveType>().is_move_constructible());
-}
-
-BOOST_AUTO_TEST_CASE(test_name) {
-  BOOST_CHECK_EQUAL("int", make_type<int>().name());
-  BOOST_CHECK_EQUAL("const int", make_type<const int>().name());
-  BOOST_CHECK_EQUAL("int&", make_type<int&>().name());
-  BOOST_CHECK_EQUAL("const int&", make_type<int const&>().name());
-
-  BOOST_CHECK_EQUAL("my_namespace::MyType", make_type<my_namespace::MyType>().name());
-  BOOST_CHECK_EQUAL("const my_namespace::MyType", make_type<const my_namespace::MyType>().name());
-  BOOST_CHECK_EQUAL("my_namespace::MyType&", make_type<my_namespace::MyType&>().name());
-  BOOST_CHECK_EQUAL("const my_namespace::MyType&", make_type<my_namespace::MyType const&>().name());
 }
