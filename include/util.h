@@ -1,5 +1,4 @@
-#ifndef UTIL_H
-#define UTIL_H
+#pragma once
 
 #include <boost/container/small_vector.hpp>
 
@@ -117,5 +116,3 @@ auto drop_first(std::tuple<T, Ts...> tuple) {
 
 } // namespace util
 } // namespace anyf
-
-#endif

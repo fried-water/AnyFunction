@@ -1,5 +1,4 @@
-#ifndef HIGHER_ORDER_H
-#define HIGHER_ORDER_H
+#pragma once
 
 #include "graph.h"
 #include "traits.h"
@@ -141,5 +140,3 @@ auto accumulate(F f, Edge<Container> vec_edge, Edge<T> init_edge,
 }
 
 } // namespace anyf
-
-#endif

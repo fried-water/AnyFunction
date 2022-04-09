@@ -11,17 +11,18 @@
 #include <numeric>
 #include <random>
 
-#define BOOST_TEST_DYN_LINK
 #include <boost/test/unit_test.hpp>
 
 using namespace anyf;
 
 namespace {
 std::vector<int> create_vector(int size) {
+  std::mt19937 rng;
+  std::uniform_int_distribution<> dist(0, 100'000);
   std::vector<int> result;
   result.reserve(size);
   for(int i = 0; i < size; i++) {
-    result.push_back(i);
+    result.push_back(dist(rng));
   }
 
   return result;
@@ -34,8 +35,8 @@ auto create_shuffle(int seed) {
   };
 }
 
-auto get_element(int idx) {
-  return [idx](std::vector<int> vec) { return vec[idx]; };
+int64_t accumulate(const std::vector<int>& v) {
+  return std::accumulate(v.begin(), v.end(), int64_t(0));
 }
 
 std::vector<int> sort_vector(std::vector<int> vec) {
@@ -44,25 +45,25 @@ std::vector<int> sort_vector(std::vector<int> vec) {
   return vec;
 }
 
-int sum(int x, int y) { return x + y; }
+int64_t sum(int64_t x, int64_t y) { return x + y; }
 
-auto create_pipeline(int seed, int element) {
+auto create_pipeline(int seed) {
   auto create = Delayed(create_vector);
   auto shuffle = Delayed(create_shuffle(seed));
   auto sort = Delayed(sort_vector);
-  auto get_ele = Delayed(get_element(element));
+  auto acc = Delayed(accumulate);
 
   auto [g, size] = make_graph<int>();
-  return FunctionGraph(std::move(g), get_ele(sort(shuffle(create(size)))));
+  return FunctionGraph(std::move(g), acc(sort(shuffle(create(size)))));
 }
 
 auto create_graph() {
   auto [g, size] = make_graph<int>();
 
-  std::array<Edge<int>, 8> ps = {create_pipeline(0, 10)(size), create_pipeline(1, 10)(size),
-                                 create_pipeline(2, 10)(size), create_pipeline(3, 10)(size),
-                                 create_pipeline(4, 10)(size), create_pipeline(5, 10)(size),
-                                 create_pipeline(6, 10)(size), create_pipeline(7, 10)(size)};
+  std::array<Edge<int64_t>, 8> ps = {create_pipeline(0)(size), create_pipeline(1)(size),
+                                     create_pipeline(2)(size), create_pipeline(3)(size),
+                                     create_pipeline(4)(size), create_pipeline(5)(size),
+                                     create_pipeline(6)(size), create_pipeline(7)(size)};
 
   auto del_sum = Delayed(sum);
   return FunctionGraph(std::move(g),
@@ -72,15 +73,15 @@ auto create_graph() {
 
 template <typename Executor, typename Graph>
 void execute_graph_with_threads(Graph g) {
-  const int size = 100'000;
+  const int size = 500'000;
   const int max_threads = 8;
 
   for(int num_threads = 1; num_threads <= max_threads; num_threads++) {
     Executor executor(num_threads);
 
-    auto t0 = std::chrono::steady_clock::now();
-    uint64_t result = execute_graph(g, executor, size);
-    auto t1 = std::chrono::steady_clock::now();
+    const auto t0 = std::chrono::steady_clock::now();
+    const int64_t result = execute_graph(g, executor, size);
+    const auto t1 = std::chrono::steady_clock::now();
     std::cout << num_threads << " THREADS: result is " << result << " after "
               << std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count() << "us\n";
   }
@@ -104,9 +105,7 @@ BOOST_AUTO_TEST_CASE(example_graph_seq) {
 }
 
 BOOST_AUTO_TEST_CASE(test_graph_input_sentinal) {
-  auto take = Delayed([](Sentinal sent) {
-    return sent;
-  });
+  auto take = Delayed([](Sentinal sent) { return sent; });
 
   auto take_ref = Delayed([](const Sentinal& sent) {
     BOOST_CHECK_EQUAL(0, sent.copies);

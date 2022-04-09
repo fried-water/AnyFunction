@@ -5,7 +5,6 @@
 #include <thread>
 #include <unordered_map>
 
-#define BOOST_TEST_DYN_LINK
 #include <boost/test/unit_test.hpp>
 
 using namespace anyf;
@@ -46,7 +45,7 @@ FunctionGraph<std::tuple<int>, std::tuple<int>> create_graph(int depth) {
 } // namespace
 
 BOOST_AUTO_TEST_CASE(stress_test) {
-  const int depth = 14;
+  const int depth = 12;
   const int num_executions = 100;
   TBBExecutor executor;
 

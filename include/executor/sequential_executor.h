@@ -1,5 +1,4 @@
-#ifndef EXECUTOR_SEQUENTIAL_EXECUTOR_H
-#define EXECUTOR_SEQUENTIAL_EXECUTOR_H
+#pragma once
 
 namespace anyf {
 
@@ -18,5 +17,3 @@ struct SequentialExecutor {
 };
 
 } // namespace anyf
-
-#endif

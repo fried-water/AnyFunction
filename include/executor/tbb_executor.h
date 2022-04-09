@@ -1,21 +1,24 @@
-#ifndef EXECUTOR_TBB_EXECUTOR_H
-#define EXECUTOR_TBB_EXECUTOR_H
+#pragma once
 
+#include "tbb/global_control.h"
+#include "tbb/info.h"
 #include "tbb/task_group.h"
-#include "tbb/task_scheduler_init.h"
 
 #include <unordered_map>
 
 namespace anyf {
 
 class TBBExecutor {
-  tbb::task_scheduler_init _scheduler;
+  tbb::global_control _control;
   std::unordered_map<int, tbb::task_group> _groups;
   int _next_task_group = 0;
 
 public:
-  TBBExecutor() = default;
-  TBBExecutor(unsigned num_threads) : _scheduler(num_threads) {}
+  TBBExecutor()
+      : _control(tbb::global_control::max_allowed_parallelism,
+                 (size_t)tbb::info::default_concurrency) {}
+  TBBExecutor(unsigned num_threads)
+      : _control(tbb::global_control::max_allowed_parallelism, num_threads) {}
 
   template <typename F>
   void async(int task_group, F&& f) {
@@ -34,5 +37,3 @@ public:
 };
 
 } // namespace anyf
-
-#endif

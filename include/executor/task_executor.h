@@ -1,5 +1,4 @@
-#ifndef EXECUTOR_TASK_EXECUTOR_H
-#define EXECUTOR_TASK_EXECUTOR_H
+#pragma once
 
 #include <cassert>
 
@@ -164,5 +163,3 @@ public:
 };
 
 } // namespace anyf
-
-#endif

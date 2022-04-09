@@ -1,5 +1,4 @@
-#ifndef TRAITS_H
-#define TRAITS_H
+#pragma once
 
 #include <functional>
 #include <tuple>
@@ -180,5 +179,3 @@ constexpr std::size_t function_num_inputs_v = function_traits<F>::arity;
 
 } // namespace traits
 } // namespace anyf
-
-#endif

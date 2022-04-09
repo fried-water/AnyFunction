@@ -1,5 +1,4 @@
-#ifndef GRAPH_H
-#define GRAPH_H
+#pragma once
 
 #include "any_function.h"
 
@@ -131,7 +130,7 @@ private:
 
 template <typename... Outputs, typename... Inputs>
 FunctionGraph(ConstructingGraph<std::tuple<Inputs...>> cg, Edge<Outputs>... edges)
-    ->FunctionGraph<std::tuple<Outputs...>, std::tuple<Inputs...>>;
+    -> FunctionGraph<std::tuple<Outputs...>, std::tuple<Inputs...>>;
 
 constexpr PassBy pass_by_of(const Type& type) {
   if(type.is_ref()) {
@@ -221,9 +220,8 @@ public:
 };
 
 template <typename F>
-Delayed(F f)
-    ->Delayed<traits::tuple_wrap_t<traits::function_return_t<F>>,
-              traits::tuple_map_t<std::decay, traits::function_args_t<F>>>;
+Delayed(F f) -> Delayed<traits::tuple_wrap_t<traits::function_return_t<F>>,
+                        traits::tuple_map_t<std::decay, traits::function_args_t<F>>>;
 
 template <typename... Inputs>
 std::tuple<ConstructingGraph<std::tuple<Inputs...>>, Edge<Inputs>...> make_graph() {
@@ -296,5 +294,3 @@ FunctionGraph<std::tuple<Outputs...>, std::tuple<Inputs...>>::operator()(Edge<In
 }
 
 } // namespace anyf
-
-#endif

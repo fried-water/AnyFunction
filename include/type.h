@@ -1,5 +1,4 @@
-#ifndef TYPE_H
-#define TYPE_H
+#pragma once
 
 #include <array>
 #include <iostream>
@@ -100,5 +99,3 @@ Container make_types() {
 }
 
 } // namespace anyf
-
-#endif

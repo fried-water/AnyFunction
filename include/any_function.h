@@ -1,5 +1,4 @@
-#ifndef any_function_H
-#define any_function_H
+#pragma once
 
 #include "traits.h"
 #include "type.h"
@@ -106,5 +105,3 @@ AnyFunction::AnyFunction(F f)
 }
 
 } // namespace anyf
-
-#endif

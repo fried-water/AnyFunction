@@ -1,10 +1,7 @@
-#ifndef GRAPH_EXECUTION_H
-#define GRAPH_EXECUTION_H
+#pragma once
 
 #include "graph.h"
 #include "util.h"
-
-#include <boost/range/combine.hpp>
 
 #include <algorithm>
 #include <atomic>
@@ -166,7 +163,9 @@ void execute_task(Executor& executor, FunctionTask& task, int task_group_id) {
   }
 
   for(FunctionTask* task : tasks_to_run) {
-    executor.async(task_group_id, [&executor, task, task_group_id]() { execute_task(executor, *task, task_group_id); });
+    executor.async(task_group_id, [&executor, task, task_group_id]() {
+      execute_task(executor, *task, task_group_id);
+    });
   }
 }
 
@@ -193,9 +192,9 @@ execute_graph(const FunctionGraph<std::tuple<Outputs...>, std::tuple<Inputs...>>
   tasks.push_back(std::make_unique<FunctionTask>(std::nullopt, sizeof...(Outputs) + 1));
 
   // Connect outputs
-  for(const auto& tuple : boost::combine(g.nodes(), tasks)) {
-    const auto& node = boost::get<0>(tuple);
-    auto& task = boost::get<1>(tuple);
+  for(size_t i = 0; i < tasks.size(); i++) {
+    const auto& node = g.nodes()[i];
+    auto& task = tasks[i];
 
     for(auto it = node.outputs.begin(); it != node.outputs.end(); ++it) {
       const NodeEdge& edge = *it;
@@ -241,7 +240,9 @@ execute_graph(const FunctionGraph<std::tuple<Outputs...>, std::tuple<Inputs...>>
 
   // launch tasks
   for(FunctionTask* task : tasks_to_run) {
-    executor.async(task_group_id, [&executor, task, task_group_id]() { execute_task(executor, *task, task_group_id); });
+    executor.async(task_group_id, [&executor, task, task_group_id]() {
+      execute_task(executor, *task, task_group_id);
+    });
   }
 
   executor.wait_for_task_group(task_group_id);
@@ -273,5 +274,3 @@ execute_graph(const FunctionGraph<std::tuple<Outputs...>, std::tuple<std::decay_
 }
 
 } // namespace anyf
-
-#endif

@@ -1,5 +1,4 @@
-#ifndef SENTINAL_H
-#define SENTINAL_H
+#pragma once
 
 struct Sentinal {
   int copies = 0;
@@ -22,5 +21,3 @@ struct Sentinal {
     return *this;
   }
 };
-
-#endif
