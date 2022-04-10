@@ -44,8 +44,8 @@ BOOST_AUTO_TEST_CASE(test_any_function_return_types) {
   const auto tuple_func = AnyFunction(tuple_fp);
 
   BOOST_CHECK(std::vector<Type>{} == void_func.output_types());
-  BOOST_CHECK(std::vector<Type>{make_type<int>()} == single_func.output_types());
-  BOOST_CHECK((std::vector{make_type<char>(), make_type<int>()}) == tuple_func.output_types());
+  BOOST_CHECK(std::vector<Type>{Type(Ty<int>())} == single_func.output_types());
+  BOOST_CHECK((std::vector{Type(Ty<char>()), Type(Ty<int>())}) == tuple_func.output_types());
 
   BOOST_CHECK(std::tuple() == invoke_with_values(void_func));
   BOOST_CHECK(std::tuple(1) == invoke_with_values<int>(single_func));
@@ -58,9 +58,9 @@ BOOST_AUTO_TEST_CASE(test_any_function_input_types) {
   const auto many_args_func = AnyFunction(many_args);
 
   BOOST_CHECK(std::vector<Type>{} == no_args_func.input_types());
-  BOOST_CHECK(std::vector<Type>{make_type<int>()} == one_arg_func.input_types());
-  BOOST_CHECK((std::vector<Type>{make_type<std::tuple<>>(), make_type<std::string>(),
-                                 make_type<char const&>()}) == many_args_func.input_types());
+  BOOST_CHECK(std::vector<Type>{Type(Ty<int>())} == one_arg_func.input_types());
+  BOOST_CHECK((std::vector<Type>{Type(Ty<std::tuple<>>()), Type(Ty<std::string>()),
+                                 Type(Ty<char const&>())}) == many_args_func.input_types());
 }
 
 bool valid_exception(std::bad_any_cast const&) { return true; }

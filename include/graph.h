@@ -265,7 +265,7 @@ template <typename... Outputs, typename... Inputs>
 FunctionGraph<TL<Outputs...>, TL<Inputs...>>::FunctionGraph(ConstructingGraph<TL<Inputs...>> cg,
                                                             Edge<Outputs>... edges) {
   assert(((edges.nodes == cg._nodes.get()) && ...)); // all edges must come from cg
-  add_edges(std::array<Type, sizeof...(Outputs)>{make_type<Outputs>()...}, *cg._nodes,
+  add_edges(std::array<Type, sizeof...(Outputs)>{Type(Ty<Outputs>{})...}, *cg._nodes,
             std::tuple(std::move(edges)...), std::make_index_sequence<sizeof...(Outputs)>());
   cg._nodes->emplace_back();
   _nodes = std::move(*cg._nodes);

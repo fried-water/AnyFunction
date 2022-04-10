@@ -36,68 +36,68 @@ struct NoCopyNoMoveType {
 } // namespace
 
 BOOST_AUTO_TEST_CASE(test_type_equality) {
-  BOOST_CHECK(make_type<int>() == make_type<int>());
-  BOOST_CHECK(make_type<int&>() == make_type<int&>());
-  BOOST_CHECK(make_type<const int>() == make_type<const int>());
-  BOOST_CHECK(make_type<const int&>() == make_type<const int&>());
-  BOOST_CHECK(make_type<int>() != make_type<float>());
-  BOOST_CHECK(make_type<int>() != make_type<int&>());
+  BOOST_CHECK(Type(Ty<int>{}) == Type(Ty<int>()));
+  BOOST_CHECK(Type(Ty<int&>()) == Type(Ty<int&>()));
+  BOOST_CHECK(Type(Ty<const int>()) == Type(Ty<const int>()));
+  BOOST_CHECK(Type(Ty<const int&>()) == Type(Ty<const int&>()));
+  BOOST_CHECK(Type(Ty<int>()) != Type(Ty<float>()));
+  BOOST_CHECK(Type(Ty<int>()) != Type(Ty<int&>()));
 
-  BOOST_CHECK(make_type<int>().type_id() == make_type<const int&>().type_id());
+  BOOST_CHECK(Type(Ty<int>()).type_id() == Type(Ty<const int&>()).type_id());
 
-  BOOST_CHECK(make_type<MyType>() == make_type<MyType>());
-  BOOST_CHECK(make_type<MyType>() != make_type<my_namespace::MyType>());
+  BOOST_CHECK(Type(Ty<MyType>()) == Type(Ty<MyType>()));
+  BOOST_CHECK(Type(Ty<MyType>()) != Type(Ty<my_namespace::MyType>()));
 }
 
 BOOST_AUTO_TEST_CASE(test_const_types) {
-  BOOST_CHECK_EQUAL(false, make_type<int>().is_const());
-  BOOST_CHECK_EQUAL(false, make_type<std::string>().is_const());
-  BOOST_CHECK_EQUAL(false, make_type<MyType>().is_const());
+  BOOST_CHECK_EQUAL(false, Type(Ty<int>()).is_const());
+  BOOST_CHECK_EQUAL(false, Type(Ty<std::string>()).is_const());
+  BOOST_CHECK_EQUAL(false, Type(Ty<MyType>()).is_const());
 
-  BOOST_CHECK_EQUAL(true, make_type<const int>().is_const());
-  BOOST_CHECK_EQUAL(true, make_type<const std::string>().is_const());
-  BOOST_CHECK_EQUAL(true, make_type<const MyType>().is_const());
+  BOOST_CHECK_EQUAL(true, Type(Ty<const int>()).is_const());
+  BOOST_CHECK_EQUAL(true, Type(Ty<const std::string>()).is_const());
+  BOOST_CHECK_EQUAL(true, Type(Ty<const MyType>()).is_const());
 
-  BOOST_CHECK_EQUAL(false, make_type<int&>().is_const());
-  BOOST_CHECK_EQUAL(false, make_type<std::string&>().is_const());
-  BOOST_CHECK_EQUAL(false, make_type<MyType&>().is_const());
+  BOOST_CHECK_EQUAL(false, Type(Ty<int&>()).is_const());
+  BOOST_CHECK_EQUAL(false, Type(Ty<std::string&>()).is_const());
+  BOOST_CHECK_EQUAL(false, Type(Ty<MyType&>()).is_const());
 
-  BOOST_CHECK_EQUAL(true, make_type<const int&>().is_const());
-  BOOST_CHECK_EQUAL(true, make_type<const std::string&>().is_const());
-  BOOST_CHECK_EQUAL(true, make_type<const MyType&>().is_const());
+  BOOST_CHECK_EQUAL(true, Type(Ty<const int&>()).is_const());
+  BOOST_CHECK_EQUAL(true, Type(Ty<const std::string&>()).is_const());
+  BOOST_CHECK_EQUAL(true, Type(Ty<const MyType&>()).is_const());
 }
 
 BOOST_AUTO_TEST_CASE(test_ref_types) {
-  BOOST_CHECK_EQUAL(false, make_type<int>().is_ref());
-  BOOST_CHECK_EQUAL(false, make_type<std::string>().is_ref());
-  BOOST_CHECK_EQUAL(false, make_type<MyType>().is_ref());
+  BOOST_CHECK_EQUAL(false, Type(Ty<int>()).is_ref());
+  BOOST_CHECK_EQUAL(false, Type(Ty<std::string>()).is_ref());
+  BOOST_CHECK_EQUAL(false, Type(Ty<MyType>()).is_ref());
 
-  BOOST_CHECK_EQUAL(false, make_type<const int>().is_ref());
-  BOOST_CHECK_EQUAL(false, make_type<const std::string>().is_ref());
-  BOOST_CHECK_EQUAL(false, make_type<const MyType>().is_ref());
+  BOOST_CHECK_EQUAL(false, Type(Ty<const int>()).is_ref());
+  BOOST_CHECK_EQUAL(false, Type(Ty<const std::string>()).is_ref());
+  BOOST_CHECK_EQUAL(false, Type(Ty<const MyType>()).is_ref());
 
-  BOOST_CHECK_EQUAL(true, make_type<int&>().is_ref());
-  BOOST_CHECK_EQUAL(true, make_type<std::string&>().is_ref());
-  BOOST_CHECK_EQUAL(true, make_type<MyType&>().is_ref());
+  BOOST_CHECK_EQUAL(true, Type(Ty<int&>()).is_ref());
+  BOOST_CHECK_EQUAL(true, Type(Ty<std::string&>()).is_ref());
+  BOOST_CHECK_EQUAL(true, Type(Ty<MyType&>()).is_ref());
 
-  BOOST_CHECK_EQUAL(true, make_type<const int&>().is_ref());
-  BOOST_CHECK_EQUAL(true, make_type<const std::string&>().is_ref());
-  BOOST_CHECK_EQUAL(true, make_type<const MyType&>().is_ref());
+  BOOST_CHECK_EQUAL(true, Type(Ty<const int&>()).is_ref());
+  BOOST_CHECK_EQUAL(true, Type(Ty<const std::string&>()).is_ref());
+  BOOST_CHECK_EQUAL(true, Type(Ty<const MyType&>()).is_ref());
 }
 
 BOOST_AUTO_TEST_CASE(test_is_copy_constructible) {
-  BOOST_CHECK_EQUAL(true, make_type<MyType>().is_copy_constructible());
-  BOOST_CHECK_EQUAL(true, make_type<ImplicitCopyOnlyType>().is_copy_constructible());
-  BOOST_CHECK_EQUAL(true, make_type<ExplicitCopyOnlyType>().is_copy_constructible());
-  BOOST_CHECK_EQUAL(false, make_type<MoveOnlyType>().is_copy_constructible());
-  BOOST_CHECK_EQUAL(false, make_type<NoCopyNoMoveType>().is_copy_constructible());
+  BOOST_CHECK_EQUAL(true, Type(Ty<MyType>()).is_copy_constructible());
+  BOOST_CHECK_EQUAL(true, Type(Ty<ImplicitCopyOnlyType>()).is_copy_constructible());
+  BOOST_CHECK_EQUAL(true, Type(Ty<ExplicitCopyOnlyType>()).is_copy_constructible());
+  BOOST_CHECK_EQUAL(false, Type(Ty<MoveOnlyType>()).is_copy_constructible());
+  BOOST_CHECK_EQUAL(false, Type(Ty<NoCopyNoMoveType>()).is_copy_constructible());
 }
 
 BOOST_AUTO_TEST_CASE(test_is_move_constructible) {
-  BOOST_CHECK_EQUAL(true, make_type<MyType>().is_move_constructible());
-  BOOST_CHECK_EQUAL(true, make_type<ImplicitCopyOnlyType>().is_move_constructible());
+  BOOST_CHECK_EQUAL(true, Type(Ty<MyType>()).is_move_constructible());
+  BOOST_CHECK_EQUAL(true, Type(Ty<ImplicitCopyOnlyType>()).is_move_constructible());
   // why does this make a difference?
-  BOOST_CHECK_EQUAL(false, make_type<ExplicitCopyOnlyType>().is_move_constructible());
-  BOOST_CHECK_EQUAL(true, make_type<MoveOnlyType>().is_move_constructible());
-  BOOST_CHECK_EQUAL(false, make_type<NoCopyNoMoveType>().is_move_constructible());
+  BOOST_CHECK_EQUAL(false, Type(Ty<ExplicitCopyOnlyType>()).is_move_constructible());
+  BOOST_CHECK_EQUAL(true, Type(Ty<MoveOnlyType>()).is_move_constructible());
+  BOOST_CHECK_EQUAL(false, Type(Ty<NoCopyNoMoveType>()).is_move_constructible());
 }
