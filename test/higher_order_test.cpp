@@ -66,7 +66,7 @@ BOOST_AUTO_TEST_CASE(test_map_graph_sentinal) {
   auto [cg, vec, cy, cz] = make_graph<std::vector<Sentinal>, Sentinal, Sentinal>();
   FunctionGraph g(std::move(cg), map(multiply_g, vec, cy, cz));
 
-  std::vector<Sentinal> input = util::make_vector<Sentinal>(Sentinal{});
+  std::vector<Sentinal> input = make_vector<Sentinal>(Sentinal{});
   SequentialExecutor executor;
   auto res = execute_graph(g, executor, std::move(input), Sentinal{}, Sentinal{});
 

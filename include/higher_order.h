@@ -53,7 +53,7 @@ struct MapFunc : graph::VirtualFunc {
 
     executor.wait_for_task_group(tg_id);
 
-    return util::make_vector<std::any>(std::move(results));
+    return make_vector<std::any>(std::move(results));
   }
 };
 

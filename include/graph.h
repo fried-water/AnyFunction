@@ -119,9 +119,48 @@ public:
 
   const std::vector<graph::Node>& nodes() const { return _nodes; }
 
-  std::conditional_t<sizeof...(Outputs) == 1, Edge<std::tuple_element_t<0, std::tuple<Outputs...>>>,
-                     std::tuple<Edge<Outputs>...>>
-  operator()(Edge<Inputs>... edges);
+  auto operator()(Edge<Inputs>... edges) {
+    using namespace graph;
+    assert((edges.nodes == ...));
+    std::vector<Node>* other_nodes = std::get<0>(std::tie(edges...)).nodes;
+
+    std::array<Term, sizeof...(Inputs)> inputs{edges.term...};
+
+    const int index_offset = other_nodes->size() - 1;
+
+    for(int i = 1; i < static_cast<int>(nodes().size()) - 1; i++) {
+      const Node& node = nodes()[i];
+
+      assert(node.func);
+      other_nodes->push_back(graph::Node{node.func});
+
+      for(int j = 0; j < i; j++) {
+        for(const NodeEdge& edge : nodes()[j].outputs) {
+          if(edge.dst.node_id == i) {
+            Term src = j == 0 ? inputs[edge.src_arg] : Term{j + index_offset, edge.src_arg};
+
+            Term dst{i + index_offset, edge.dst.arg_idx};
+
+            (*other_nodes)[src.node_id].outputs.push_back(NodeEdge{src.arg_idx, dst, edge.pb});
+          }
+        }
+      }
+    }
+
+    std::array<Term, sizeof...(Outputs)> outputs{};
+
+    for(int i = 0; i < static_cast<int>(nodes().size()); i++) {
+      for(const NodeEdge& edge : nodes()[i].outputs) {
+        if(edge.dst.node_id == static_cast<int>(nodes().size() - 1)) {
+          outputs[edge.src_arg] = Term{i + index_offset, edge.src_arg};
+        }
+      }
+    }
+
+    return apply_range<sizeof...(Outputs)>(outputs, [&](auto&&... terms) {
+      return tuple_or_value(Edge<Outputs>{other_nodes, terms}...);
+    });
+  }
 
 private:
   std::vector<graph::Node> _nodes;
@@ -150,14 +189,7 @@ void check_edges(Edge<Ts>... edges) {
 template <typename... Outputs, std::size_t... Is>
 std::tuple<Edge<Outputs>...> output_edges(std::vector<graph::Node>* nodes,
                                           std::index_sequence<Is...>) {
-  return std::make_tuple(Edge<Outputs>{nodes, {static_cast<int>(nodes->size() - 1), Is}}...);
-}
-
-template <typename... Outputs, std::size_t... Is>
-std::tuple<Edge<Outputs>...> output_edges(std::vector<graph::Node>* nodes,
-                                          const std::array<graph::Term, sizeof...(Outputs)>& terms,
-                                          std::index_sequence<Is...>) {
-  return std::tuple(Edge<Outputs>{nodes, terms[Is]}...);
+  return std::tuple(Edge<Outputs>{nodes, {static_cast<int>(nodes->size() - 1), Is}}...);
 }
 
 template <typename... Inputs, typename Types, std::size_t... Is>
@@ -199,12 +231,9 @@ class Delayed<TL<Outputs...>, TL<Inputs...>> {
               std::make_index_sequence<sizeof...(Inputs)>());
     nodes->push_back(graph::Node{std::move(any_function)});
 
-    if constexpr(sizeof...(Outputs) == 1) {
-      return Edge<std::tuple_element_t<0, std::tuple<Outputs...>>>{
-          nodes, {static_cast<int>(nodes->size() - 1), 0}};
-    } else {
-      return output_edges<Outputs...>(nodes, std::make_index_sequence<sizeof...(Outputs)>());
-    }
+    return std::apply(
+        [&](auto&&... edges) { return tuple_or_value(edges...); },
+        output_edges<Outputs...>(nodes, std::make_index_sequence<sizeof...(Outputs)>()));
   }
 
 public:
@@ -228,7 +257,7 @@ std::tuple<ConstructingGraph<TL<Inputs...>>, Edge<Inputs>...> make_graph() {
   auto nodes = g._nodes.get();
   nodes->emplace_back();
   return std::tuple_cat(
-      std::make_tuple(std::move(g)),
+      std::tuple(std::move(g)),
       output_edges<Inputs...>(nodes, std::make_index_sequence<sizeof...(Inputs)>()));
 }
 
@@ -240,55 +269,6 @@ FunctionGraph<TL<Outputs...>, TL<Inputs...>>::FunctionGraph(ConstructingGraph<TL
             std::tuple(std::move(edges)...), std::make_index_sequence<sizeof...(Outputs)>());
   cg._nodes->emplace_back();
   _nodes = std::move(*cg._nodes);
-}
-
-template <typename... Outputs, typename... Inputs>
-std::conditional_t<sizeof...(Outputs) == 1, Edge<std::tuple_element_t<0, std::tuple<Outputs...>>>,
-                   std::tuple<Edge<Outputs>...>>
-FunctionGraph<TL<Outputs...>, TL<Inputs...>>::operator()(Edge<Inputs>... edges) {
-  using namespace graph;
-  assert((edges.nodes == ...));
-  std::vector<Node>* other_nodes = std::get<0>(std::tie(edges...)).nodes;
-
-  std::array<Term, sizeof...(Inputs)> inputs{edges.term...};
-
-  const int index_offset = other_nodes->size() - 1;
-
-  for(int i = 1; i < static_cast<int>(nodes().size()) - 1; i++) {
-    const Node& node = nodes()[i];
-
-    assert(node.func);
-    other_nodes->push_back(graph::Node{node.func});
-
-    for(int j = 0; j < i; j++) {
-      for(const NodeEdge& edge : nodes()[j].outputs) {
-        if(edge.dst.node_id == i) {
-          Term src = j == 0 ? inputs[edge.src_arg] : Term{j + index_offset, edge.src_arg};
-
-          Term dst{i + index_offset, edge.dst.arg_idx};
-
-          (*other_nodes)[src.node_id].outputs.push_back(NodeEdge{src.arg_idx, dst, edge.pb});
-        }
-      }
-    }
-  }
-
-  std::array<Term, sizeof...(Outputs)> outputs{};
-
-  for(int i = 0; i < static_cast<int>(nodes().size()); i++) {
-    for(const NodeEdge& edge : nodes()[i].outputs) {
-      if(edge.dst.node_id == static_cast<int>(nodes().size() - 1)) {
-        outputs[edge.src_arg] = Term{i + index_offset, edge.src_arg};
-      }
-    }
-  }
-
-  if constexpr(sizeof...(Outputs) == 1) {
-    return Edge<std::tuple_element_t<0, std::tuple<Outputs...>>>{other_nodes, outputs[0]};
-  } else {
-    return output_edges<Outputs...>(other_nodes, outputs,
-                                    std::make_index_sequence<sizeof...(Outputs)>());
-  }
 }
 
 } // namespace anyf

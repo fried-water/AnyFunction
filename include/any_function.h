@@ -46,15 +46,10 @@ std::vector<std::any> call_with_any_vec(TL<Ts...>, F f, std::vector<std::any*>&&
     f(std::any_cast<Ts>(std::move(*inputs[Is]))...);
     return {};
   } else if constexpr(is_tuple(fn_ret)) {
-    auto result_tuple = f(std::any_cast<Ts>(std::move(*inputs[Is]))...);
-
-    std::vector<std::any> result;
-    result.reserve(size(as_tl(fn_ret)));
-    util::tuple_for_each(std::move(result_tuple),
-                         [&result](int, auto x) { result.push_back(std::move(x)); });
-    return result;
+    return std::apply([](auto&&... e) { return make_vector<std::any>(std::move(e)...); },
+                      f(std::any_cast<Ts>(std::move(*inputs[Is]))...));
   } else {
-    return util::make_vector<std::any>(f(std::any_cast<Ts>(std::move(*inputs[Is]))...));
+    return make_vector<std::any>(f(std::any_cast<Ts>(std::move(*inputs[Is]))...));
   }
 }
 

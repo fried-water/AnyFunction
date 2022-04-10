@@ -8,15 +8,24 @@ using namespace anyf;
 
 namespace {
 
+std::vector<std::any*> any_ptrs(std::vector<std::any>& anys) {
+  std::vector<std::any*> ptrs;
+  for(std::any& a : anys) {
+    ptrs.push_back(&a);
+  }
+  return ptrs;
+}
+
 template <typename... Outputs, typename... Inputs>
 std::tuple<Outputs...> invoke_with_values(AnyFunction func, Inputs... inputs) {
-  auto any_vec = util::make_vector<std::any>(inputs...);
-
-  auto result = func(util::map<std::vector<std::any*>>(any_vec, [](auto& x) { return &x; }));
+  auto any_values = make_vector<std::any>(inputs...);
+  auto result = func(any_ptrs(any_values));
 
   BOOST_CHECK(sizeof...(Outputs) == result.size());
 
-  return util::vec_to_tuple<std::tuple<Outputs...>>(std::move(result));
+  return apply_range<sizeof...(Outputs)>(std::move(result), [](auto&&... anys) {
+    return std::tuple(std::any_cast<Outputs>(std::move(anys))...);
+  });
 }
 
 void void_fp(){};
@@ -90,10 +99,9 @@ BOOST_AUTO_TEST_CASE(test_any_function_num_moves_copies) {
     return Sentinal{};
   });
 
-  auto input_vals = util::make_vector<std::any>(Sentinal{}, Sentinal{});
+  auto input_vals = make_vector<std::any>(Sentinal{}, Sentinal{});
 
-  auto result =
-      sentinal_func(util::map<std::vector<std::any*>>(input_vals, [](auto& x) { return &x; }));
+  auto result = sentinal_func(any_ptrs(input_vals));
 
   BOOST_CHECK_EQUAL(1u, result.size());
 

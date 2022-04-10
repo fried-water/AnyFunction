@@ -261,16 +261,12 @@ std::conditional_t<sizeof...(Outputs) == 1, std::tuple_element_t<0, std::tuple<O
 execute_graph(const FunctionGraph<TL<Outputs...>, TL<std::decay_t<Inputs>...>>& g,
               Executor& executor, Inputs&&... inputs) {
   // This vector needs to survive for the runtime of execute graph
-  auto any_values = util::make_vector<std::any>(std::forward<Inputs>(inputs)...);
+  auto any_values = make_vector<std::any>(std::forward<Inputs>(inputs)...);
 
-  auto results = execute_graph(g, executor,
-                               any_ptrs(any_values, std::make_index_sequence<sizeof...(Inputs)>()));
-
-  if constexpr(sizeof...(Outputs) == 1) {
-    return std::any_cast<Outputs...>(std::move(results[0]));
-  } else {
-    return util::vec_to_tuple<std::tuple<Outputs...>>(std::move(results));
-  }
+  return apply_range<sizeof...(Outputs)>(
+      execute_graph(g, executor,
+                    any_ptrs(any_values, std::make_index_sequence<sizeof...(Inputs)>())),
+      [](auto&&... anys) { return tuple_or_value(std::any_cast<Outputs>(std::move(anys))...); });
 }
 
 } // namespace anyf
