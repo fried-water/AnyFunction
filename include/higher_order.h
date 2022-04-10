@@ -1,12 +1,12 @@
 #pragma once
 
-#include "graph.h"
+#include "static_graph.h"
 #include "traits.h"
 
 #include <algorithm>
 #include <functional>
 #include <tuple>
-#include <type_traits>
+#include <vector>
 
 namespace anyf {
 
