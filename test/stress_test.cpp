@@ -21,7 +21,7 @@ struct IntPairHash {
 };
 
 auto create_graph(int depth) {
-  std::unordered_map<std::pair<int, int>, Edge<int>, IntPairHash> edges;
+  std::unordered_map<std::pair<int, int>, DelayedEdge<int>, IntPairHash> edges;
 
   auto Delayed_copy = Delayed(identity);
   auto Delayed_sum = Delayed(sum);
@@ -40,7 +40,7 @@ auto create_graph(int depth) {
     }
   }
 
-  return FunctionGraph(std::move(g), edges.at(std::pair(0, 0)));
+  return finalize(std::move(g), edges.at(std::pair(0, 0)));
 }
 
 } // namespace

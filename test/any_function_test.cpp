@@ -81,9 +81,8 @@ BOOST_AUTO_TEST_CASE(test_any_function_invalid) {
   // auto no_const_pointers = AnyFunction([](int const*){});
   // auto no_non_const_refs = AnyFunction([](int&){});
 
-  // auto no_return_refs = AnyFunction([](int const& x) -> int const& {
-  // return x; }); auto no_return_ptrs = AnyFunction([](int const& x) {
-  // return &x; });
+  // auto no_return_refs = AnyFunction([](int const& x) -> int const& { return x; });
+  // auto no_return_ptrs = AnyFunction([](int const& x) { return &x; });
 
   // auto must_be_const = AnyFunction([]() mutable {});
 }

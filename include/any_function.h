@@ -7,12 +7,10 @@
 
 #include <any>
 #include <exception>
-// #include <functional>
-// #include <iostream>
 
 namespace anyf {
 
-class BadInvocation : std::exception {
+struct BadInvocation : std::exception {
   const char* what() const noexcept override { return "bad invocation"; }
 };
 
@@ -21,17 +19,17 @@ public:
   template <typename F>
   explicit AnyFunction(F f);
 
-  std::vector<std::any> operator()(std::vector<std::any*> inputs) const {
+  std::vector<std::any> operator()(Span<std::any*> inputs) const {
     if(inputs.size() != input_types().size())
       throw BadInvocation();
-    return _func(std::move(inputs));
+    return _func(inputs);
   }
 
   const std::vector<Type>& input_types() const { return _input_types; }
   const std::vector<Type>& output_types() const { return _output_types; }
 
 private:
-  std::function<std::vector<std::any>(std::vector<std::any*>&&)> _func;
+  std::function<std::vector<std::any>(Span<std::any*>)> _func;
 
   std::vector<Type> _input_types;
   std::vector<Type> _output_types;
@@ -39,8 +37,8 @@ private:
 
 namespace details {
 template <typename... Ts, typename F, std::size_t... Is>
-std::vector<std::any> call_with_any_vec(TL<Ts...>, F f, std::vector<std::any*>&& inputs,
-                                        std::index_sequence<Is...>) {
+std::vector<std::any> call_with_anys(TL<Ts...>, F f, Span<std::any*> inputs,
+                                     std::index_sequence<Is...>) {
   constexpr auto fn_ret = return_type<F>();
 
   if constexpr(is_same(Ty<void>{}, fn_ret)) {
@@ -68,9 +66,9 @@ AnyFunction::AnyFunction(F f)
                               all(fn_args, [](auto t) { return is_decayed(t) || is_const_ref(t); });
 
   if constexpr(legal_return && legal_args && is_const<F>()) {
-    _func = [f = std::move(f), fn_args](std::vector<std::any*>&& inputs) {
-      return details::call_with_any_vec(fn_args, std::move(f), std::move(inputs),
-                                        std::make_index_sequence<size(fn_args)>());
+    _func = [f = std::move(f), fn_args](Span<std::any*> inputs) {
+      return details::call_with_anys(fn_args, std::move(f), inputs,
+                                     std::make_index_sequence<size(fn_args)>());
     };
   } else {
     static_assert(is_const<F>(), "No mutable lambdas and non-const operator().");

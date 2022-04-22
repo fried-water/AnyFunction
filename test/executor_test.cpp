@@ -54,21 +54,20 @@ auto create_pipeline(int seed) {
   auto acc = Delayed(accumulate);
 
   auto [g, size] = make_graph<int>();
-  return FunctionGraph(std::move(g), acc(sort(shuffle(create(size)))));
+  return finalize(std::move(g), acc(sort(shuffle(create(size)))));
 }
 
 auto create_graph() {
   auto [g, size] = make_graph<int>();
 
-  std::array<Edge<int64_t>, 8> ps = {create_pipeline(0)(size), create_pipeline(1)(size),
-                                     create_pipeline(2)(size), create_pipeline(3)(size),
-                                     create_pipeline(4)(size), create_pipeline(5)(size),
-                                     create_pipeline(6)(size), create_pipeline(7)(size)};
+  std::array<DelayedEdge<int64_t>, 8> ps = {create_pipeline(0)(size), create_pipeline(1)(size),
+                                            create_pipeline(2)(size), create_pipeline(3)(size),
+                                            create_pipeline(4)(size), create_pipeline(5)(size),
+                                            create_pipeline(6)(size), create_pipeline(7)(size)};
 
   auto del_sum = Delayed(sum);
-  return FunctionGraph(std::move(g),
-                       del_sum(del_sum(del_sum(ps[0], ps[1]), del_sum(ps[2], ps[3])),
-                               del_sum(del_sum(ps[4], ps[5]), del_sum(ps[6], ps[7]))));
+  return finalize(std::move(g), del_sum(del_sum(del_sum(ps[0], ps[1]), del_sum(ps[2], ps[3])),
+                                        del_sum(del_sum(ps[4], ps[5]), del_sum(ps[6], ps[7]))));
 }
 
 template <typename Executor, typename Graph>
@@ -77,50 +76,65 @@ void execute_graph_with_threads(Graph g) {
   const int max_threads = 8;
 
   for(int num_threads = 1; num_threads <= max_threads; num_threads++) {
-    Executor executor(num_threads);
-
     const auto t0 = std::chrono::steady_clock::now();
-    const int64_t result = execute_graph(g, executor, size);
+    const int64_t result = execute_graph(g, Executor(num_threads), size);
     const auto t1 = std::chrono::steady_clock::now();
-    std::cout << num_threads << " THREADS: result is " << result << " after "
-              << std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count() << "us\n";
+    fmt::print("{} THREADS: result is {} after {}us\n", num_threads, result,
+               std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count());
   }
 }
 
 } // namespace
 
 BOOST_AUTO_TEST_CASE(example_graph_tbb) {
-  std::cout << "\nExecuting graph with TBB\n\n";
+  fmt::print("\nExecuting graph with TBB\n\n");
   execute_graph_with_threads<TBBExecutor>(create_graph());
 }
 
 BOOST_AUTO_TEST_CASE(example_graph_task) {
-  std::cout << "\nExecuting graph with custom task system\n\n";
+  fmt::print("\nExecuting graph with custom task system\n\n");
   execute_graph_with_threads<TaskExecutor>(create_graph());
 }
 
 BOOST_AUTO_TEST_CASE(example_graph_seq) {
-  std::cout << "\nExecuting graph Sequentially\n\n";
+  fmt::print("\nExecuting graph Sequentially\n\n");
   execute_graph_with_threads<SequentialExecutor>(create_graph());
 }
 
 BOOST_AUTO_TEST_CASE(test_graph_input_sentinal) {
-  auto take = Delayed([](Sentinal sent) { return sent; });
+  const auto take = Delayed([](Sentinal sent) { return sent; });
 
-  auto take_ref = Delayed([](const Sentinal& sent) {
+  const auto take_ref = Delayed([](const Sentinal& sent) {
     BOOST_CHECK_EQUAL(0, sent.copies);
     return sent;
   });
 
   auto [cg, s1, s2, s3] = make_graph<Sentinal, Sentinal, Sentinal>();
 
-  FunctionGraph g(std::move(cg), take(take(take(s1))), take(s2), s2, take_ref(s3), s3);
-
-  SequentialExecutor executor;
-  auto [r1, r2, r3, r4, r5] = execute_graph(g, executor, Sentinal{}, Sentinal{}, Sentinal{});
+  const auto g = finalize(std::move(cg), take(take(take(s1))), take(s2), s2, take_ref(s3), s3);
+  const auto [r1, r2, r3, r4, r5] =
+      execute_graph(g, SequentialExecutor{}, Sentinal{}, Sentinal{}, Sentinal{});
   BOOST_CHECK_EQUAL(0, r1.copies); // Move since s1 no other inputs
-  BOOST_CHECK_EQUAL(1, r2.copies); // s2 has two outputs first is copied
-  BOOST_CHECK_EQUAL(0, r3.copies); //   second is moved
-  BOOST_CHECK_EQUAL(1, r4.copies); // s3 must be copied through take_ref
-  BOOST_CHECK_EQUAL(1, r5.copies); // s3 cannot be moved since taken by ref elsewhere
+  BOOST_CHECK_EQUAL(1,
+                    r2.copies + r3.copies); // s2 has two outputs one is copied the other is moved
+  BOOST_CHECK_EQUAL(1, r4.copies);          // s3 must be copied through take_ref
+  BOOST_CHECK_EQUAL(1, r5.copies);          // s3 is copied since taken by ref elsewhere
 }
+
+// TODO create any that supports move only types, and aborts when trying to copy
+// BOOST_AUTO_TEST_CASE(test_graph_move_only) {
+//   const auto take = Delayed([](std::unique_ptr<int> ptr) { return *ptr; });
+
+//   const auto take_ref = Delayed([](const std::unique_ptr<int>& sent) {
+//     return *sent;
+//   });
+
+//   auto [cg, ptr] = make_graph<std::unique_ptr<int>>();
+
+//   const auto g = finalize(std::move(cg), take_ref(ptr), take(ptr));
+
+//   SequentialExecutor executor;
+//   const auto [r1, r2] = execute_graph(g, executor, std::make_unique<int>(5));
+//   BOOST_CHECK_EQUAL(5, r1);
+//   BOOST_CHECK_EQUAL(5, r2);
+// }

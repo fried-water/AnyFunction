@@ -88,7 +88,7 @@ class TaskExecutor {
         auto tuple = _q[(i + n) % _count].try_pop();
         if(tuple) {
           std::get<0> (*tuple)();
-          _group_task_counts[std::get<1>(*tuple)].fetch_sub(1, std::memory_order_relaxed);
+          _group_task_counts[std::get<1>(*tuple)].fetch_sub(1, std::memory_order_release);
           continue;
         }
       }
@@ -97,7 +97,7 @@ class TaskExecutor {
       if(!tuple)
         break;
       std::get<0> (*tuple)();
-      _group_task_counts[std::get<1>(*tuple)].fetch_sub(1, std::memory_order_relaxed);
+      _group_task_counts[std::get<1>(*tuple)].fetch_sub(1, std::memory_order_release);
     }
   }
 
@@ -108,7 +108,7 @@ class TaskExecutor {
         auto tuple = _q[(_count - 1 + n) % _count].try_pop();
         if(tuple) {
           std::get<0> (*tuple)();
-          _group_task_counts[std::get<1>(*tuple)].fetch_sub(1, std::memory_order_relaxed);
+          _group_task_counts[std::get<1>(*tuple)].fetch_sub(1, std::memory_order_release);
           continue;
         }
       }
@@ -151,12 +151,9 @@ public:
   int create_task_group() { return _next_task_group++; }
 
   bool is_task_group_complete(int task_group) const {
-    auto it = _group_task_counts.find(task_group);
-
+    const auto it = _group_task_counts.find(task_group);
     assert(it != _group_task_counts.end());
-    int val = it->second.load(std::memory_order_relaxed);
-
-    return val == 0;
+    return it->second.load(std::memory_order_acquire) == 0;
   }
 
   void wait_for_task_group(int task_group) { run_while_waiting(task_group); }
