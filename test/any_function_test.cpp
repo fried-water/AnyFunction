@@ -17,7 +17,7 @@ std::vector<std::any*> any_ptrs(std::vector<std::any>& anys) {
 }
 
 template <typename... Outputs, typename... Inputs>
-std::tuple<Outputs...> invoke_with_values(AnyFunction func, Inputs... inputs) {
+std::tuple<Outputs...> invoke_with_values(const AnyFunction& func, Inputs... inputs) {
   auto any_values = make_vector<std::any>(inputs...);
   auto result = func(any_ptrs(any_values));
 
@@ -69,11 +69,18 @@ bool valid_exception(BadInvocation const&) { return true; }
 BOOST_AUTO_TEST_CASE(test_any_function_incorrect_args) {
   const auto func = AnyFunction([](int) {});
 
-  BOOST_CHECK_EXCEPTION(invoke_with_values(func, 'a'), std::bad_any_cast, valid_exception);
+  BOOST_CHECK_EXCEPTION(invoke_with_values(func, 'a'), BadInvocation, valid_exception);
   BOOST_CHECK_EXCEPTION(invoke_with_values(func), BadInvocation, valid_exception);
   BOOST_CHECK_EXCEPTION(invoke_with_values(func, 1, 2), BadInvocation, valid_exception);
 
   invoke_with_values(func, 1);
+}
+
+BOOST_AUTO_TEST_CASE(test_any_function_no_copies) {
+  const auto func = AnyFunction([s = Sentinal{}]() { return s.copies; });
+
+  BOOST_CHECK_EQUAL(0, std::get<0>(invoke_with_values<int>(func)));
+  BOOST_CHECK_EQUAL(0, std::get<0>(invoke_with_values<int>(func)));
 }
 
 BOOST_AUTO_TEST_CASE(test_any_function_invalid) {
@@ -88,7 +95,7 @@ BOOST_AUTO_TEST_CASE(test_any_function_invalid) {
 }
 
 BOOST_AUTO_TEST_CASE(test_any_function_num_moves_copies) {
-  const auto sentinal_func = AnyFunction([](Sentinal x, Sentinal const& y) {
+  const auto sentinal_func = AnyFunction([](Sentinal x, const Sentinal& y) {
     BOOST_CHECK_EQUAL(0, x.copies);
     BOOST_CHECK_EQUAL(2, x.moves); // 1 move into any, 1 into function
 

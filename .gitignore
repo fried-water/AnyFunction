@@ -33,3 +33,5 @@
 
 # build dir
 build/*
+
+.DS_Store

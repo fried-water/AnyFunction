@@ -7,6 +7,7 @@
 
 #include <any>
 #include <exception>
+#include <functional>
 
 namespace anyf {
 
@@ -37,18 +38,18 @@ private:
 
 namespace details {
 template <typename... Ts, typename F, std::size_t... Is>
-std::vector<std::any> call_with_anys(TL<Ts...>, F f, Span<std::any*> inputs,
+std::vector<std::any> call_with_anys(TL<Ts...>, F& f, Span<std::any*> inputs,
                                      std::index_sequence<Is...>) {
-  constexpr auto fn_ret = return_type<F>();
+  if(((typeid(std::decay_t<Ts>) != inputs[Is]->type()) || ...)) {
+    throw BadInvocation();
+  }
+  auto&& result = invoke_normalize_void_return(f, std::move(*std::any_cast<std::decay_t<Ts>>(inputs[Is]))...);
 
-  if constexpr(is_same(Ty<void>{}, fn_ret)) {
-    f(std::any_cast<Ts>(std::move(*inputs[Is]))...);
-    return {};
-  } else if constexpr(is_tuple(fn_ret)) {
+  if constexpr(is_tuple(decay(Ty<decltype(result)>{}))) {
     return std::apply([](auto&&... e) { return make_vector<std::any>(std::move(e)...); },
-                      f(std::any_cast<Ts>(std::move(*inputs[Is]))...));
+                      std::move(result));
   } else {
-    return make_vector<std::any>(f(std::any_cast<Ts>(std::move(*inputs[Is]))...));
+    return make_vector<std::any>(std::move(result));
   }
 }
 
@@ -67,7 +68,7 @@ AnyFunction::AnyFunction(F f)
 
   if constexpr(legal_return && legal_args && is_const<F>()) {
     _func = [f = std::move(f), fn_args](Span<std::any*> inputs) {
-      return details::call_with_anys(fn_args, std::move(f), inputs,
+      return details::call_with_anys(fn_args, f, inputs,
                                      std::make_index_sequence<size(fn_args)>());
     };
   } else {

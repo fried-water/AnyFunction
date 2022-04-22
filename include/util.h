@@ -37,11 +37,11 @@ decltype(auto) tuple_or_value(Ts&&... t) {
 namespace details {
 
 template <typename Range, typename F, std::size_t... Is>
-decltype(auto) apply_range(Range&& range, F f, std::index_sequence<Is...>) {
+decltype(auto) apply_range(Range&& range, F&& f, std::index_sequence<Is...>) {
   if constexpr(std::is_reference_v<Range>) {
-    return f(range[Is]...);
+    return std::forward<F>(f)(range[Is]...);
   } else {
-    return f(std::move(range[Is])...);
+    return std::forward<F>(f)(std::move(range[Is])...);
   }
 }
 
@@ -50,6 +50,16 @@ decltype(auto) apply_range(Range&& range, F f, std::index_sequence<Is...>) {
 template <size_t Count, typename Range, typename F>
 decltype(auto) apply_range(Range&& range, F f) {
   return details::apply_range(std::forward<Range>(range), f, std::make_index_sequence<Count>());
+}
+
+template <typename F, typename... Inputs>
+decltype(auto) invoke_normalize_void_return(F&& f, Inputs&&... inputs) {
+  if constexpr(is_same(Ty<void>{}, return_type<std::decay_t<F>>())) {
+    std::forward<F>(f)(std::forward<Inputs>(inputs)...);
+    return std::tuple();
+  } else {
+    return std::forward<F>(f)(std::forward<Inputs>(inputs)...);
+  }
 }
 
 template <typename... Ts>
