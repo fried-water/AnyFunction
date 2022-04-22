@@ -1,5 +1,4 @@
 #include "any_function.h"
-
 #include "sentinal.h"
 
 #include <boost/test/unit_test.hpp>
@@ -24,7 +23,7 @@ std::tuple<Outputs...> invoke_with_values(const AnyFunction& func, Inputs... inp
   BOOST_CHECK(sizeof...(Outputs) == result.size());
 
   return apply_range<sizeof...(Outputs)>(
-      std::move(result), [](auto&&... anys) { return std::tuple(std::any_cast<Outputs>(std::move(anys))...); });
+    std::move(result), [](auto&&... anys) { return std::tuple(std::any_cast<Outputs>(std::move(anys))...); });
 }
 
 void void_fp(){};

@@ -118,11 +118,11 @@ std::vector<std::any> execute_graph(const FunctionGraph& g, Executor&& executor,
   std::vector<std::unique_ptr<FunctionTask>> tasks;
 
   for(const auto& node : g) {
-    tasks.push_back(std::make_unique<FunctionTask>(
-        std::visit(Overloaded{// +1 so output and input task never run;
-                              [](const std::vector<Type>& v) { return v.size() + 1; },
-                              [](const AnyFunction& a) { return a.input_types().size(); }},
-                   node.func)));
+    tasks.push_back(
+      std::make_unique<FunctionTask>(std::visit(Overloaded{// +1 so output and input task never run;
+                                                           [](const std::vector<Type>& v) { return v.size() + 1; },
+                                                           [](const AnyFunction& a) { return a.input_types().size(); }},
+                                                node.func)));
   }
 
   tasks.front()->results = std::move(inputs);
@@ -139,7 +139,7 @@ std::vector<std::any> execute_graph(const FunctionGraph& g, Executor&& executor,
       const auto next_it = std::find_if(it + 1, outputs.end(), [&](Edge edge) { return src.port != edge.src_port; });
 
       const int num_refs =
-          static_cast<int>(std::count_if(it, next_it, [&](Edge e) { return input_type(g, e.dst).is_ref(); }));
+        static_cast<int>(std::count_if(it, next_it, [&](Edge e) { return input_type(g, e.dst).is_ref(); }));
       std::optional<Term> move_term;
 
       RefCleanup* cleanup = num_refs > 0 ? new RefCleanup{num_refs, src, std::nullopt} : nullptr;
@@ -200,8 +200,8 @@ template <typename... Outputs, typename Executor, typename... Inputs>
 auto execute_graph(const StaticFunctionGraph<TL<Outputs...>, TL<std::decay_t<Inputs>...>>& g, Executor&& executor,
                    Inputs&&... inputs) {
   return apply_range<sizeof...(Outputs)>(
-      execute_graph(g, std::forward<Executor>(executor), make_vector<std::any>(std::forward<Inputs>(inputs)...)),
-      [](auto&&... anys) { return tuple_or_value(std::any_cast<Outputs>(std::move(anys))...); });
+    execute_graph(g, std::forward<Executor>(executor), make_vector<std::any>(std::forward<Inputs>(inputs)...)),
+    [](auto&&... anys) { return tuple_or_value(std::any_cast<Outputs>(std::move(anys))...); });
 }
 
 } // namespace anyf

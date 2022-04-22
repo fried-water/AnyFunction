@@ -1,12 +1,12 @@
 #pragma once
 
+#include <fmt/core.h>
+
 #include <array>
 #include <optional>
 #include <tuple>
 #include <utility>
 #include <vector>
-
-#include <fmt/core.h>
 
 namespace anyf {
 

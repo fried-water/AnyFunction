@@ -5,13 +5,13 @@
 #include "graph_execution.h"
 #include "sentinal.h"
 
+#include <boost/test/unit_test.hpp>
+
 #include <algorithm>
 #include <chrono>
 #include <iostream>
 #include <numeric>
 #include <random>
-
-#include <boost/test/unit_test.hpp>
 
 using namespace anyf;
 
@@ -59,8 +59,8 @@ auto create_graph() {
   auto [g, size] = make_graph<int>();
 
   std::array<DelayedEdge<int64_t>, 8> ps = {
-      create_pipeline(0)(size), create_pipeline(1)(size), create_pipeline(2)(size), create_pipeline(3)(size),
-      create_pipeline(4)(size), create_pipeline(5)(size), create_pipeline(6)(size), create_pipeline(7)(size)};
+    create_pipeline(0)(size), create_pipeline(1)(size), create_pipeline(2)(size), create_pipeline(3)(size),
+    create_pipeline(4)(size), create_pipeline(5)(size), create_pipeline(6)(size), create_pipeline(7)(size)};
 
   auto del_sum = Delayed(sum);
   return finalize(std::move(g), del_sum(del_sum(del_sum(ps[0], ps[1]), del_sum(ps[2], ps[3])),

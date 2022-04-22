@@ -2,7 +2,6 @@
 
 #include "traits.h"
 #include "type.h"
-
 #include "util.h"
 
 #include <any>

@@ -49,7 +49,7 @@ CommentPragmas:  '^ IWYU pragma:'
 CompactNamespaces: false
 ConstructorInitializerAllOnOneLineOrOnePerLine: false
 ConstructorInitializerIndentWidth: 4
-ContinuationIndentWidth: 4
+ContinuationIndentWidth: 2
 Cpp11BracedListStyle: true
 DerivePointerAlignment: false
 DisableFormat:   false
@@ -59,14 +59,18 @@ ForEachMacros:
   - foreach
   - Q_FOREACH
   - BOOST_FOREACH
-IncludeBlocks:   Preserve
+IncludeBlocks:   Regroup
 IncludeCategories: 
-  - Regex:           '^"(llvm|llvm-c|clang|clang-c)/'
-    Priority:        2
-  - Regex:           '^(<|"(gtest|gmock|isl|json)/)'
-    Priority:        3
-  - Regex:           '.*'
+  - Regex:           '"executor/.*.h"'
     Priority:        1
+  - Regex:           '".*.h"'
+    Priority:        2
+  - Regex:           '<.*.h>'
+    Priority:        3
+  - Regex:           '<.*.hpp>'
+    Priority:        4
+  - Regex:           '<.*>'
+    Priority:        5
 IncludeIsMainRegex: '(Test)?$'
 IndentCaseLabels: false
 IndentPPDirectives: None

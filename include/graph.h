@@ -10,8 +10,6 @@
 #include <variant>
 #include <vector>
 
-#include <iostream>
-
 namespace anyf {
 
 using NodeId = int;
@@ -179,7 +177,7 @@ inline FunctionGraph finalize(ConstructingGraph cg, Span<Term> outputs) {
     check(!types.back().is_ref(), "Cannot return a borrowed value for output {}", i);
 
     check(types.back().is_copy_constructible() ||
-              (cg._usage.at(outputs[i]).values == 0 && types.back().is_move_constructible()),
+            (cg._usage.at(outputs[i]).values == 0 && types.back().is_move_constructible()),
           "Cannot return output {} since its not copy constructible or its already moved");
 
     cg._nodes[outputs[i].node_id].outputs.push_back({outputs[i].port, {static_cast<int>(cg._nodes.size()), i}});

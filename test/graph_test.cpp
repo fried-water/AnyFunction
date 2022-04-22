@@ -1,9 +1,9 @@
 #include "graph.h"
 
+#include <boost/test/unit_test.hpp>
+
 #include <algorithm>
 #include <iostream>
-
-#include <boost/test/unit_test.hpp>
 
 using namespace anyf;
 
@@ -59,7 +59,7 @@ BOOST_AUTO_TEST_CASE(simple_inner_graph) {
   BOOST_CHECK((std::vector<Term>{{4, 0}}) == by2_outputs);
 
   const std::vector<std::vector<Edge>> expected_edges{
-      {{0, {1, 0}}, {1, {3, 1}}}, {{0, {2, 0}}}, {{0, {3, 0}}}, {{0, {4, 0}}}, {{0, {5, 0}}}, {}};
+    {{0, {1, 0}}, {1, {3, 1}}}, {{0, {2, 0}}}, {{0, {3, 0}}}, {{0, {4, 0}}}, {{0, {5, 0}}}, {}};
 
   BOOST_CHECK(std::equal(expected_edges.begin(), expected_edges.end(), g.begin(), g.end(), compare_edges_to_nodes));
 }
