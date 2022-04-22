@@ -35,9 +35,7 @@ auto create_shuffle(int seed) {
   };
 }
 
-int64_t accumulate(const std::vector<int>& v) {
-  return std::accumulate(v.begin(), v.end(), int64_t(0));
-}
+int64_t accumulate(const std::vector<int>& v) { return std::accumulate(v.begin(), v.end(), int64_t(0)); }
 
 std::vector<int> sort_vector(std::vector<int> vec) {
   std::sort(vec.begin(), vec.end());
@@ -60,10 +58,9 @@ auto create_pipeline(int seed) {
 auto create_graph() {
   auto [g, size] = make_graph<int>();
 
-  std::array<DelayedEdge<int64_t>, 8> ps = {create_pipeline(0)(size), create_pipeline(1)(size),
-                                            create_pipeline(2)(size), create_pipeline(3)(size),
-                                            create_pipeline(4)(size), create_pipeline(5)(size),
-                                            create_pipeline(6)(size), create_pipeline(7)(size)};
+  std::array<DelayedEdge<int64_t>, 8> ps = {
+      create_pipeline(0)(size), create_pipeline(1)(size), create_pipeline(2)(size), create_pipeline(3)(size),
+      create_pipeline(4)(size), create_pipeline(5)(size), create_pipeline(6)(size), create_pipeline(7)(size)};
 
   auto del_sum = Delayed(sum);
   return finalize(std::move(g), del_sum(del_sum(del_sum(ps[0], ps[1]), del_sum(ps[2], ps[3])),
@@ -112,8 +109,7 @@ BOOST_AUTO_TEST_CASE(test_graph_input_sentinal) {
   auto [cg, s1, s2, s3] = make_graph<Sentinal, Sentinal, Sentinal>();
 
   const auto g = finalize(std::move(cg), take(take(take(s1))), take(s2), s2, take_ref(s3), s3);
-  const auto [r1, r2, r3, r4, r5] =
-      execute_graph(g, SequentialExecutor{}, Sentinal{}, Sentinal{}, Sentinal{});
+  const auto [r1, r2, r3, r4, r5] = execute_graph(g, SequentialExecutor{}, Sentinal{}, Sentinal{}, Sentinal{});
   BOOST_CHECK_EQUAL(0, r1.copies); // Move since s1 no other inputs
   BOOST_CHECK_EQUAL(1,
                     r2.copies + r3.copies); // s2 has two outputs one is copied the other is moved

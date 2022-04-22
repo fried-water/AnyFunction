@@ -38,17 +38,14 @@ private:
 
 namespace details {
 template <typename... Ts, typename F, std::size_t... Is>
-std::vector<std::any> call_with_anys(TL<Ts...>, F& f, Span<std::any*> inputs,
-                                     std::index_sequence<Is...>) {
+std::vector<std::any> call_with_anys(TL<Ts...>, F& f, Span<std::any*> inputs, std::index_sequence<Is...>) {
   if(((typeid(std::decay_t<Ts>) != inputs[Is]->type()) || ...)) {
     throw BadInvocation();
   }
-  auto&& result =
-      invoke_normalize_void_return(f, std::move(*std::any_cast<std::decay_t<Ts>>(inputs[Is]))...);
+  auto&& result = invoke_normalize_void_return(f, std::move(*std::any_cast<std::decay_t<Ts>>(inputs[Is]))...);
 
   if constexpr(is_tuple(decay(Ty<decltype(result)>{}))) {
-    return std::apply([](auto&&... e) { return make_vector<std::any>(std::move(e)...); },
-                      std::move(result));
+    return std::apply([](auto&&... e) { return make_vector<std::any>(std::move(e)...); }, std::move(result));
   } else {
     return make_vector<std::any>(std::move(result));
   }

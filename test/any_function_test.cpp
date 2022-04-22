@@ -23,9 +23,8 @@ std::tuple<Outputs...> invoke_with_values(const AnyFunction& func, Inputs... inp
 
   BOOST_CHECK(sizeof...(Outputs) == result.size());
 
-  return apply_range<sizeof...(Outputs)>(std::move(result), [](auto&&... anys) {
-    return std::tuple(std::any_cast<Outputs>(std::move(anys))...);
-  });
+  return apply_range<sizeof...(Outputs)>(
+      std::move(result), [](auto&&... anys) { return std::tuple(std::any_cast<Outputs>(std::move(anys))...); });
 }
 
 void void_fp(){};
@@ -59,8 +58,8 @@ BOOST_AUTO_TEST_CASE(test_any_function_input_types) {
 
   BOOST_CHECK(std::vector<Type>{} == no_args_func.input_types());
   BOOST_CHECK(std::vector<Type>{Type(Ty<int>())} == one_arg_func.input_types());
-  BOOST_CHECK((std::vector<Type>{Type(Ty<std::tuple<>>()), Type(Ty<std::string>()),
-                                 Type(Ty<char const&>())}) == many_args_func.input_types());
+  BOOST_CHECK((std::vector<Type>{Type(Ty<std::tuple<>>()), Type(Ty<std::string>()), Type(Ty<char const&>())}) ==
+              many_args_func.input_types());
 }
 
 bool valid_exception(std::bad_any_cast const&) { return true; }

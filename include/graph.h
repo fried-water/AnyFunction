@@ -127,15 +127,14 @@ public:
 
 private:
   void check_types(const std::vector<Type>& expected_types, Span<Term> inputs) const {
-    check(inputs.size() == expected_types.size(), "Function expected {} arguments, given {}",
-          expected_types.size(), inputs.size());
+    check(inputs.size() == expected_types.size(), "Function expected {} arguments, given {}", expected_types.size(),
+          inputs.size());
 
     for(int i = 0; i < inputs.ssize(); i++) {
       const auto& term = inputs[i];
       const Type input_type = expected_types[i];
 
-      check(output_type(_nodes, term).type_id() == input_type.type_id(),
-            "Type mismatch at argument {}", i);
+      check(output_type(_nodes, term).type_id() == input_type.type_id(), "Type mismatch at argument {}", i);
 
       if(input_type.is_ref() || input_type.is_copy_constructible()) {
         // Always fine
@@ -183,8 +182,7 @@ inline FunctionGraph finalize(ConstructingGraph cg, Span<Term> outputs) {
               (cg._usage.at(outputs[i]).values == 0 && types.back().is_move_constructible()),
           "Cannot return output {} since its not copy constructible or its already moved");
 
-    cg._nodes[outputs[i].node_id].outputs.push_back(
-        {outputs[i].port, {static_cast<int>(cg._nodes.size()), i}});
+    cg._nodes[outputs[i].node_id].outputs.push_back({outputs[i].port, {static_cast<int>(cg._nodes.size()), i}});
   }
 
   cg._nodes.push_back({std::move(types)});

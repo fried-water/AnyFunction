@@ -35,8 +35,8 @@ auto create_graph(int depth) {
   for(int layer = depth - 1; layer >= 0; layer--) {
     int nodes_on_layer = 1 << layer;
     for(int i = 0; i < nodes_on_layer; i++) {
-      edges.emplace(std::pair(layer, i), Delayed_sum(edges.at(std::pair(layer + 1, i * 2)),
-                                                     edges.at(std::pair(layer + 1, i * 2 + 1))));
+      edges.emplace(std::pair(layer, i),
+                    Delayed_sum(edges.at(std::pair(layer + 1, i * 2)), edges.at(std::pair(layer + 1, i * 2 + 1))));
     }
   }
 
@@ -57,8 +57,8 @@ BOOST_AUTO_TEST_CASE(stress_test) {
   auto g = create_graph(depth);
   auto t1 = std::chrono::steady_clock::now();
 
-  std::cout << "Creating graph took "
-            << std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0).count() << "ms\n";
+  std::cout << "Creating graph took " << std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0).count()
+            << "ms\n";
 
   t0 = std::chrono::steady_clock::now();
   int result = -1;

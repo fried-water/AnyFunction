@@ -95,8 +95,7 @@ public:
   Span(const std::vector<T>& vec) : _begin(vec.data()), _end(vec.data() + vec.size()) {}
 
   Span(const std::optional<T>& opt)
-      : _begin(opt ? std::addressof(*opt) : nullptr),
-        _end(opt ? std::addressof(*opt) + 1 : nullptr) {}
+      : _begin(opt ? std::addressof(*opt) : nullptr), _end(opt ? std::addressof(*opt) + 1 : nullptr) {}
 
   const T* begin() const { return _begin; }
   const T* end() const { return _end; }

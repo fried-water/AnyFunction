@@ -14,11 +14,8 @@ class TBBExecutor {
   int _next_task_group = 0;
 
 public:
-  TBBExecutor()
-      : _control(tbb::global_control::max_allowed_parallelism,
-                 (size_t)tbb::info::default_concurrency) {}
-  TBBExecutor(unsigned num_threads)
-      : _control(tbb::global_control::max_allowed_parallelism, num_threads) {}
+  TBBExecutor() : _control(tbb::global_control::max_allowed_parallelism, (size_t)tbb::info::default_concurrency) {}
+  TBBExecutor(unsigned num_threads) : _control(tbb::global_control::max_allowed_parallelism, num_threads) {}
 
   template <typename F>
   void async(int task_group, F&& f) {

@@ -11,9 +11,7 @@
 
 namespace anyf {
 
-inline bool decrement(std::atomic<int>& a) {
-  return a.fetch_sub(1, std::memory_order_acq_rel) == 1;
-}
+inline bool decrement(std::atomic<int>& a) { return a.fetch_sub(1, std::memory_order_acq_rel) == 1; }
 inline bool ready(const std::atomic<int>& a) { return a.load(std::memory_order_acquire) == 0; }
 
 struct RefCleanup {
@@ -43,12 +41,11 @@ struct alignas(64) FunctionTask {
   // or perhaps forwarding when finished
   std::vector<RefCleanup*> ref_cleanups;
 
-  explicit FunctionTask(int num_inputs)
-      : ref_count(num_inputs), input_vals(num_inputs), input_ptrs(num_inputs) {}
+  explicit FunctionTask(int num_inputs) : ref_count(num_inputs), input_vals(num_inputs), input_ptrs(num_inputs) {}
 };
 
-inline void propogate_outputs(std::vector<std::unique_ptr<FunctionTask>>& tasks,
-                              std::vector<int>& tasks_to_run, int idx) {
+inline void propogate_outputs(std::vector<std::unique_ptr<FunctionTask>>& tasks, std::vector<int>& tasks_to_run,
+                              int idx) {
   FunctionTask& task = *tasks[idx];
   std::vector<std::any>& results = task.results;
 
@@ -76,8 +73,8 @@ inline void propogate_outputs(std::vector<std::unique_ptr<FunctionTask>>& tasks,
 }
 
 template <typename Executor>
-void execute_task(const FunctionGraph& g, std::vector<std::unique_ptr<FunctionTask>>& tasks,
-                  Executor& executor, int idx, int task_group_id) {
+void execute_task(const FunctionGraph& g, std::vector<std::unique_ptr<FunctionTask>>& tasks, Executor& executor,
+                  int idx, int task_group_id) {
   FunctionTask& task = *tasks[idx];
 
   task.results = std::get<AnyFunction>(g[idx].func)(task.input_ptrs);
@@ -111,15 +108,13 @@ void execute_task(const FunctionGraph& g, std::vector<std::unique_ptr<FunctionTa
   }
 
   for(int task : tasks_to_run) {
-    executor.async(task_group_id, [&, task, task_group_id]() {
-      execute_task(g, tasks, executor, task, task_group_id);
-    });
+    executor.async(task_group_id,
+                   [&, task, task_group_id]() { execute_task(g, tasks, executor, task, task_group_id); });
   }
 }
 
 template <typename Executor>
-std::vector<std::any> execute_graph(const FunctionGraph& g, Executor&& executor,
-                                    std::vector<std::any> inputs) {
+std::vector<std::any> execute_graph(const FunctionGraph& g, Executor&& executor, std::vector<std::any> inputs) {
   std::vector<std::unique_ptr<FunctionTask>> tasks;
 
   for(const auto& node : g) {
@@ -141,11 +136,10 @@ std::vector<std::any> execute_graph(const FunctionGraph& g, Executor&& executor,
       const Term src{i, it->src_port};
       const Type type = output_type(g, src);
 
-      const auto next_it =
-          std::find_if(it + 1, outputs.end(), [&](Edge edge) { return src.port != edge.src_port; });
+      const auto next_it = std::find_if(it + 1, outputs.end(), [&](Edge edge) { return src.port != edge.src_port; });
 
-      const int num_refs = static_cast<int>(
-          std::count_if(it, next_it, [&](Edge e) { return input_type(g, e.dst).is_ref(); }));
+      const int num_refs =
+          static_cast<int>(std::count_if(it, next_it, [&](Edge e) { return input_type(g, e.dst).is_ref(); }));
       std::optional<Term> move_term;
 
       RefCleanup* cleanup = num_refs > 0 ? new RefCleanup{num_refs, src, std::nullopt} : nullptr;
@@ -191,9 +185,8 @@ std::vector<std::any> execute_graph(const FunctionGraph& g, Executor&& executor,
 
   // launch tasks
   for(int task : tasks_to_run) {
-    executor.async(task_group_id, [&, task, task_group_id]() {
-      execute_task(g, tasks, executor, task, task_group_id);
-    });
+    executor.async(task_group_id,
+                   [&, task, task_group_id]() { execute_task(g, tasks, executor, task, task_group_id); });
   }
 
   executor.wait_for_task_group(task_group_id);
@@ -204,11 +197,10 @@ std::vector<std::any> execute_graph(const FunctionGraph& g, Executor&& executor,
 }
 
 template <typename... Outputs, typename Executor, typename... Inputs>
-auto execute_graph(const StaticFunctionGraph<TL<Outputs...>, TL<std::decay_t<Inputs>...>>& g,
-                   Executor&& executor, Inputs&&... inputs) {
+auto execute_graph(const StaticFunctionGraph<TL<Outputs...>, TL<std::decay_t<Inputs>...>>& g, Executor&& executor,
+                   Inputs&&... inputs) {
   return apply_range<sizeof...(Outputs)>(
-      execute_graph(g, std::forward<Executor>(executor),
-                    make_vector<std::any>(std::forward<Inputs>(inputs)...)),
+      execute_graph(g, std::forward<Executor>(executor), make_vector<std::any>(std::forward<Inputs>(inputs)...)),
       [](auto&&... anys) { return tuple_or_value(std::any_cast<Outputs>(std::move(anys))...); });
 }
 
