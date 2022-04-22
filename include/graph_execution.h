@@ -18,8 +18,8 @@ inline bool ready(const std::atomic<int>& a) { return a.load(std::memory_order_a
 
 struct RefCleanup {
   std::atomic<int> ref_count;
-  graph::Term src;
-  std::optional<graph::Term> dst;
+  Term src;
+  std::optional<Term> dst;
 };
 
 struct alignas(64) FunctionTask {
@@ -35,9 +35,9 @@ struct alignas(64) FunctionTask {
   std::vector<std::any> results;
 
   // Information on where to send the outputs
-  std::vector<graph::Edge> moves;
-  std::vector<graph::Edge> copies;
-  std::vector<graph::Edge> refs;
+  std::vector<Edge> moves;
+  std::vector<Edge> copies;
+  std::vector<Edge> refs;
 
   // Determines which references each node is respondible for cleaning up
   // or perhaps forwarding when finished
@@ -52,7 +52,7 @@ inline void propogate_outputs(std::vector<std::unique_ptr<FunctionTask>>& tasks,
   FunctionTask& task = *tasks[idx];
   std::vector<std::any>& results = task.results;
 
-  const auto setup_input = [&](graph::Term dst, std::any* result) {
+  const auto setup_input = [&](Term dst, std::any* result) {
     tasks[dst.node_id]->input_ptrs[dst.port] = result;
 
     if(decrement(tasks[dst.node_id]->ref_count)) {
@@ -90,10 +90,10 @@ void execute_task(const FunctionGraph& g, std::vector<std::unique_ptr<FunctionTa
   // or move it to its final destination
   for(RefCleanup* cleanup : task.ref_cleanups) {
     if(decrement(cleanup->ref_count)) {
-      const graph::Term src = cleanup->src;
+      const Term src = cleanup->src;
 
       if(cleanup->dst) {
-        const graph::Term dst = *cleanup->dst;
+        const Term dst = *cleanup->dst;
         FunctionTask& dst_task = *tasks[dst.node_id];
 
         dst_task.input_vals[dst.port] = std::move(tasks[src.node_id]->results[src.port]);
@@ -120,8 +120,6 @@ void execute_task(const FunctionGraph& g, std::vector<std::unique_ptr<FunctionTa
 template <typename Executor>
 std::vector<std::any> execute_graph(const FunctionGraph& g, Executor&& executor,
                                     std::vector<std::any> inputs) {
-  using namespace anyf::graph;
-
   std::vector<std::unique_ptr<FunctionTask>> tasks;
 
   for(const auto& node : g) {
@@ -140,23 +138,23 @@ std::vector<std::any> execute_graph(const FunctionGraph& g, Executor&& executor,
 
     auto it = outputs.begin();
     while(it != outputs.end()) {
-      const graph::Term src{i, it->src_port};
-      const Type output_type = graph::output_type(g, src);
+      const Term src{i, it->src_port};
+      const Type type = output_type(g, src);
 
-      const auto next_it = std::find_if(
-          it + 1, outputs.end(), [&](graph::Edge edge) { return src.port != edge.src_port; });
+      const auto next_it =
+          std::find_if(it + 1, outputs.end(), [&](Edge edge) { return src.port != edge.src_port; });
 
-      const int num_refs = static_cast<int>(std::count_if(
-          it, next_it, [&](graph::Edge e) { return graph::input_type(g, e.dst).is_ref(); }));
-      std::optional<graph::Term> move_term;
+      const int num_refs = static_cast<int>(
+          std::count_if(it, next_it, [&](Edge e) { return input_type(g, e.dst).is_ref(); }));
+      std::optional<Term> move_term;
 
       RefCleanup* cleanup = num_refs > 0 ? new RefCleanup{num_refs, src, std::nullopt} : nullptr;
 
-      std::for_each(it, next_it, [&](graph::Edge edge) {
-        if(graph::input_type(g, edge.dst).is_ref()) {
+      std::for_each(it, next_it, [&](Edge edge) {
+        if(input_type(g, edge.dst).is_ref()) {
           tasks[edge.dst.node_id]->ref_cleanups.push_back(cleanup);
           tasks[i]->refs.push_back(edge);
-        } else if(output_type.is_move_constructible() && !move_term) {
+        } else if(type.is_move_constructible() && !move_term) {
           move_term = edge.dst;
         } else {
           tasks[i]->copies.push_back(edge);
@@ -164,9 +162,9 @@ std::vector<std::any> execute_graph(const FunctionGraph& g, Executor&& executor,
       });
 
       if(num_refs > 0) {
-        cleanup->dst = output_type.is_copy_constructible() ? std::nullopt : move_term;
+        cleanup->dst = type.is_copy_constructible() ? std::nullopt : move_term;
 
-        if(move_term && output_type.is_copy_constructible()) {
+        if(move_term && type.is_copy_constructible()) {
           tasks[i]->copies.push_back({src.port, *move_term});
         }
       } else if(move_term) {

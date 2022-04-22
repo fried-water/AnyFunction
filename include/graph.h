@@ -17,8 +17,6 @@ namespace anyf {
 using NodeId = int;
 using Port = int;
 
-namespace graph {
-
 struct Term {
   NodeId node_id;
   Port port;
@@ -75,9 +73,7 @@ inline Type output_type(const std::vector<Node>& nodes, Term t) {
                     nodes[t.node_id].func);
 }
 
-} // namespace graph
-
-using FunctionGraph = std::vector<graph::Node>;
+using FunctionGraph = std::vector<Node>;
 
 class ConstructingGraph {
 public:
@@ -85,20 +81,18 @@ public:
 
   explicit ConstructingGraph(std::vector<Type> inputs) { _nodes.push_back({std::move(inputs)}); }
 
-  std::vector<graph::Term> add(AnyFunction f, Span<graph::Term> inputs) {
+  std::vector<Term> add(AnyFunction f, Span<Term> inputs) {
     const int num_outputs = static_cast<int>(f.output_types().size());
 
     check_types(f.input_types(), inputs);
     add_edges(inputs);
     _nodes.push_back({std::move(f)});
 
-    return graph::make_terms(static_cast<int>(_nodes.size() - 1), num_outputs);
+    return make_terms(static_cast<int>(_nodes.size() - 1), num_outputs);
     ;
   }
 
-  std::vector<graph::Term> add(const FunctionGraph& f, Span<graph::Term> inputs) {
-    using namespace graph;
-
+  std::vector<Term> add(const FunctionGraph& f, Span<Term> inputs) {
     check(f.size() >= 2, "F must have atleast 2 nodes");
     check_types(std::get<std::vector<Type>>(f[0].func), inputs);
 
@@ -129,10 +123,10 @@ public:
     return outputs;
   }
 
-  friend FunctionGraph finalize(ConstructingGraph, Span<graph::Term>);
+  friend FunctionGraph finalize(ConstructingGraph, Span<Term>);
 
 private:
-  void check_types(const std::vector<Type>& expected_types, Span<graph::Term> inputs) const {
+  void check_types(const std::vector<Type>& expected_types, Span<Term> inputs) const {
     check(inputs.size() == expected_types.size(), "Function expected {} arguments, given {}",
           expected_types.size(), inputs.size());
 
@@ -140,7 +134,7 @@ private:
       const auto& term = inputs[i];
       const Type input_type = expected_types[i];
 
-      check(graph::output_type(_nodes, term).type_id() == input_type.type_id(),
+      check(output_type(_nodes, term).type_id() == input_type.type_id(),
             "Type mismatch at argument {}", i);
 
       if(input_type.is_ref() || input_type.is_copy_constructible()) {
@@ -154,11 +148,11 @@ private:
     }
   }
 
-  void add_edges(Span<graph::Term> inputs) {
+  void add_edges(Span<Term> inputs) {
     for(int i = 0; i < inputs.ssize(); i++) {
       const auto term = inputs[i];
 
-      if(graph::output_type(_nodes, term).is_ref()) {
+      if(output_type(_nodes, term).is_ref()) {
         _usage[term].borrows++;
       } else {
         _usage[term].values++;
@@ -168,20 +162,20 @@ private:
     }
   }
 
-  std::vector<graph::Node> _nodes;
-  std::unordered_map<graph::Term, graph::TermUsage, graph::TermHash> _usage;
+  std::vector<Node> _nodes;
+  std::unordered_map<Term, TermUsage, TermHash> _usage;
 };
 
-inline std::tuple<ConstructingGraph, std::vector<graph::Term>> make_graph(std::vector<Type> types) {
+inline std::tuple<ConstructingGraph, std::vector<Term>> make_graph(std::vector<Type> types) {
   const int num_inputs = static_cast<int>(types.size());
-  return {ConstructingGraph{std::move(types)}, graph::make_terms(0, num_inputs)};
+  return {ConstructingGraph{std::move(types)}, make_terms(0, num_inputs)};
 }
 
-inline FunctionGraph finalize(ConstructingGraph cg, Span<graph::Term> outputs) {
+inline FunctionGraph finalize(ConstructingGraph cg, Span<Term> outputs) {
   std::vector<Type> types;
 
   for(int i = 0; i < outputs.ssize(); i++) {
-    types.push_back(graph::output_type(cg._nodes, outputs[i]));
+    types.push_back(output_type(cg._nodes, outputs[i]));
 
     check(!types.back().is_ref(), "Cannot return a borrowed value for output {}", i);
 

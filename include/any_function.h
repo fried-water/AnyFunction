@@ -43,7 +43,8 @@ std::vector<std::any> call_with_anys(TL<Ts...>, F& f, Span<std::any*> inputs,
   if(((typeid(std::decay_t<Ts>) != inputs[Is]->type()) || ...)) {
     throw BadInvocation();
   }
-  auto&& result = invoke_normalize_void_return(f, std::move(*std::any_cast<std::decay_t<Ts>>(inputs[Is]))...);
+  auto&& result =
+      invoke_normalize_void_return(f, std::move(*std::any_cast<std::decay_t<Ts>>(inputs[Is]))...);
 
   if constexpr(is_tuple(decay(Ty<decltype(result)>{}))) {
     return std::apply([](auto&&... e) { return make_vector<std::any>(std::move(e)...); },
@@ -68,8 +69,7 @@ AnyFunction::AnyFunction(F f)
 
   if constexpr(legal_return && legal_args && is_const<F>()) {
     _func = [f = std::move(f), fn_args](Span<std::any*> inputs) {
-      return details::call_with_anys(fn_args, f, inputs,
-                                     std::make_index_sequence<size(fn_args)>());
+      return details::call_with_anys(fn_args, f, inputs, std::make_index_sequence<size(fn_args)>());
     };
   } else {
     static_assert(is_const<F>(), "No mutable lambdas and non-const operator().");

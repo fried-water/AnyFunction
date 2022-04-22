@@ -10,7 +10,7 @@ namespace anyf {
 template <typename T>
 struct DelayedEdge {
   ConstructingGraph* cg;
-  graph::Term term;
+  Term term;
 };
 
 template <typename... Outputs, typename T, typename... Inputs>
