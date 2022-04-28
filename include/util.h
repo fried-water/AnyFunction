@@ -1,5 +1,7 @@
 #pragma once
 
+#include "traits.h"
+
 #include <fmt/core.h>
 
 #include <array>
@@ -74,44 +76,5 @@ void check(bool b, const char* fmt_string, const Ts&... ts) {
     error(fmt_string, ts...);
   }
 }
-
-template <typename T>
-class Span {
-  const T* _begin = nullptr;
-  const T* _end = nullptr;
-
-  using value_type = T;
-  using reference_type = const T&;
-  using pointer_type = const T*;
-  using iterator_type = const T*;
-  using const_iterator_type = const T*;
-
-public:
-  Span() = default;
-
-  template <size_t N>
-  Span(const std::array<T, N>& arr) : _begin(arr.data()), _end(arr.data() + arr.size()) {}
-
-  Span(const std::vector<T>& vec) : _begin(vec.data()), _end(vec.data() + vec.size()) {}
-
-  Span(const std::optional<T>& opt)
-      : _begin(opt ? std::addressof(*opt) : nullptr), _end(opt ? std::addressof(*opt) + 1 : nullptr) {}
-
-  const T* begin() const { return _begin; }
-  const T* end() const { return _end; }
-
-  const T* cbegin() const { return _begin; }
-  const T* cend() const { return _end; }
-
-  const T& front() const { return *_begin; }
-  const T& back() const { return *(_end - 1); }
-
-  const T& operator[](size_t idx) const { return *(_begin + idx); }
-
-  size_t size() const { return std::distance(_begin, _end); }
-  int64_t ssize() const { return static_cast<int64_t>(size()); }
-
-  bool is_empty() const { return _begin == _end; }
-};
 
 } // namespace anyf

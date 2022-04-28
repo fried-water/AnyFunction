@@ -1,5 +1,6 @@
 #pragma once
 
+#include "span.h"
 #include "traits.h"
 #include "type.h"
 #include "util.h"

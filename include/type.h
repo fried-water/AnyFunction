@@ -6,9 +6,11 @@
 
 namespace anyf {
 
+using TypeID = intptr_t;
+
 template <typename T>
-constexpr intptr_t type_id() {
-  return reinterpret_cast<intptr_t>(&type_id<T>);
+constexpr TypeID type_id() {
+  return reinterpret_cast<TypeID>(&type_id<T>);
 }
 
 class Type {
@@ -32,7 +34,15 @@ public:
       _properties |= Type::MOVE_FLAG;
   }
 
-  constexpr intptr_t type_id() const { return _type; }
+  constexpr Type decayed() const {
+    constexpr uint8_t decayed_mask = Type::COPY_FLAG | Type::MOVE_FLAG;
+    Type d;
+    d._type = _type;
+    d._properties = _properties & decayed_mask;
+    return d;
+  }
+
+  constexpr TypeID type_id() const { return _type; }
 
   constexpr bool is_const() const { return (_properties & CONST_FLAG) > 0; }
   constexpr bool is_ref() const { return (_properties & REF_FLAG) > 0; }
@@ -46,7 +56,7 @@ public:
   constexpr friend bool operator!=(const Type& lhs, const Type& rhs) { return !(lhs == rhs); }
 
 private:
-  intptr_t _type;
+  TypeID _type = 0;
   uint8_t _properties = 0;
 };
 
