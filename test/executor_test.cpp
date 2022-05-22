@@ -83,17 +83,17 @@ void execute_graph_with_threads(Graph g) {
 
 } // namespace
 
-BOOST_AUTO_TEST_CASE(example_graph_tbb) {
+BOOST_AUTO_TEST_CASE(example_graph_tbb, *boost::unit_test::disabled()) {
   fmt::print("\nExecuting graph with TBB\n\n");
   execute_graph_with_threads<TBBExecutor>(create_graph());
 }
 
-BOOST_AUTO_TEST_CASE(example_graph_task) {
+BOOST_AUTO_TEST_CASE(example_graph_task, *boost::unit_test::disabled()) {
   fmt::print("\nExecuting graph with custom task system\n\n");
   execute_graph_with_threads<TaskExecutor>(create_graph());
 }
 
-BOOST_AUTO_TEST_CASE(example_graph_seq) {
+BOOST_AUTO_TEST_CASE(example_graph_seq, *boost::unit_test::disabled()) {
   fmt::print("\nExecuting graph Sequentially\n\n");
   execute_graph_with_threads<SequentialExecutor>(create_graph());
 }
@@ -117,20 +117,11 @@ BOOST_AUTO_TEST_CASE(test_graph_input_sentinal) {
   BOOST_CHECK_EQUAL(1, r5.copies);          // s3 is copied since taken by ref elsewhere
 }
 
-// TODO create any that supports move only types, and aborts when trying to copy
-// BOOST_AUTO_TEST_CASE(test_graph_move_only) {
-//   const auto take = Delayed([](std::unique_ptr<int> ptr) { return *ptr; });
+BOOST_AUTO_TEST_CASE(test_graph_move_only) {
+  const auto take = Delayed([](std::unique_ptr<int> ptr) { return *ptr; });
 
-//   const auto take_ref = Delayed([](const std::unique_ptr<int>& sent) {
-//     return *sent;
-//   });
+  auto [cg, ptr] = make_graph<std::unique_ptr<int>>();
+  const auto g = finalize(std::move(cg), take(ptr));
 
-//   auto [cg, ptr] = make_graph<std::unique_ptr<int>>();
-
-//   const auto g = finalize(std::move(cg), take_ref(ptr), take(ptr));
-
-//   SequentialExecutor executor;
-//   const auto [r1, r2] = execute_graph(g, executor, std::make_unique<int>(5));
-//   BOOST_CHECK_EQUAL(5, r1);
-//   BOOST_CHECK_EQUAL(5, r2);
-// }
+  BOOST_CHECK_EQUAL(5, execute_graph(g, SequentialExecutor{}, std::make_unique<int>(5)));
+}

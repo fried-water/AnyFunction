@@ -24,13 +24,13 @@ struct alignas(64) FunctionTask {
   std::atomic<int> ref_count;
 
   // Stores the values of the inputs for copy/move parameters
-  std::vector<std::any> input_vals;
+  std::vector<Any> input_vals;
 
   // Points to the location of the inputs, input_vals for copies/moves
   // result of other tasks for refs
-  std::vector<std::any*> input_ptrs;
+  std::vector<Any*> input_ptrs;
 
-  std::vector<std::any> results;
+  std::vector<Any> results;
 
   // Information on where to send the outputs
   std::vector<Edge> moves;
@@ -47,9 +47,9 @@ struct alignas(64) FunctionTask {
 inline void propogate_outputs(std::vector<std::unique_ptr<FunctionTask>>& tasks, std::vector<int>& tasks_to_run,
                               int idx) {
   FunctionTask& task = *tasks[idx];
-  std::vector<std::any>& results = task.results;
+  std::vector<Any>& results = task.results;
 
-  const auto setup_input = [&](Term dst, std::any* result) {
+  const auto setup_input = [&](Term dst, Any* result) {
     tasks[dst.node_id]->input_ptrs[dst.port] = result;
 
     if(decrement(tasks[dst.node_id]->ref_count)) {
@@ -100,7 +100,7 @@ void execute_task(const FunctionGraph& g, std::vector<std::unique_ptr<FunctionTa
           tasks_to_run.push_back(dst.node_id);
         }
       } else {
-        tasks[src.node_id]->results[src.port].reset();
+        tasks[src.node_id]->results[src.port] = {};
       }
 
       delete cleanup;
@@ -114,7 +114,7 @@ void execute_task(const FunctionGraph& g, std::vector<std::unique_ptr<FunctionTa
 }
 
 template <typename Executor>
-std::vector<std::any> execute_graph(const FunctionGraph& g, Executor&& executor, std::vector<std::any> inputs) {
+std::vector<Any> execute_graph(const FunctionGraph& g, Executor&& executor, std::vector<Any> inputs) {
   std::vector<std::unique_ptr<FunctionTask>> tasks;
 
   for(const auto& node : g) {
@@ -200,8 +200,8 @@ template <typename... Outputs, typename Executor, typename... Inputs>
 auto execute_graph(const StaticFunctionGraph<TL<Outputs...>, TL<std::decay_t<Inputs>...>>& g, Executor&& executor,
                    Inputs&&... inputs) {
   return apply_range<sizeof...(Outputs)>(
-    execute_graph(g, std::forward<Executor>(executor), make_vector<std::any>(std::forward<Inputs>(inputs)...)),
-    [](auto&&... anys) { return tuple_or_value(std::any_cast<Outputs>(std::move(anys))...); });
+    execute_graph(g, std::forward<Executor>(executor), make_vector<Any>(std::forward<Inputs>(inputs)...)),
+    [](auto&&... anys) { return tuple_or_value(any_cast<Outputs>(std::move(anys))...); });
 }
 
 } // namespace anyf

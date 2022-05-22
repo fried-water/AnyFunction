@@ -73,6 +73,14 @@ inline Type output_type(const std::vector<Node>& nodes, Term t) {
 
 using FunctionGraph = std::vector<Node>;
 
+inline const std::vector<Type>& input_types(const FunctionGraph& g) {
+  return std::get<std::vector<Type>>(g.front().func);
+}
+
+inline const std::vector<Type>& output_types(const FunctionGraph& g) {
+  return std::get<std::vector<Type>>(g.back().func);
+}
+
 class ConstructingGraph {
 public:
   ConstructingGraph() = default;
@@ -87,7 +95,6 @@ public:
     _nodes.push_back({std::move(f)});
 
     return make_terms(static_cast<int>(_nodes.size() - 1), num_outputs);
-    ;
   }
 
   std::vector<Term> add(const FunctionGraph& f, Span<Term> inputs) {

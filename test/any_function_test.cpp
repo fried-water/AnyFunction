@@ -7,23 +7,15 @@ using namespace anyf;
 
 namespace {
 
-std::vector<std::any*> any_ptrs(std::vector<std::any>& anys) {
-  std::vector<std::any*> ptrs;
-  for(std::any& a : anys) {
-    ptrs.push_back(&a);
-  }
-  return ptrs;
-}
-
 template <typename... Outputs, typename... Inputs>
 std::tuple<Outputs...> invoke_with_values(const AnyFunction& func, Inputs... inputs) {
-  auto any_values = make_vector<std::any>(inputs...);
+  auto any_values = make_vector<Any>(inputs...);
   auto result = func(any_ptrs(any_values));
 
   BOOST_CHECK(sizeof...(Outputs) == result.size());
 
   return apply_range<sizeof...(Outputs)>(
-    std::move(result), [](auto&&... anys) { return std::tuple(std::any_cast<Outputs>(std::move(anys))...); });
+    std::move(result), [](auto&&... anys) { return std::tuple(any_cast<Outputs>(std::move(anys))...); });
 }
 
 void void_fp(){};
@@ -61,7 +53,7 @@ BOOST_AUTO_TEST_CASE(test_any_function_input_types) {
               many_args_func.input_types());
 }
 
-bool valid_exception(std::bad_any_cast const&) { return true; }
+bool valid_exception(BadCast const&) { return true; }
 bool valid_exception(BadInvocation const&) { return true; }
 
 BOOST_AUTO_TEST_CASE(test_any_function_incorrect_args) {
@@ -103,13 +95,13 @@ BOOST_AUTO_TEST_CASE(test_any_function_num_moves_copies) {
     return Sentinal{};
   });
 
-  auto input_vals = make_vector<std::any>(Sentinal{}, Sentinal{});
+  auto input_vals = make_vector<Any>(Sentinal{}, Sentinal{});
 
   auto result = sentinal_func(any_ptrs(input_vals));
 
   BOOST_CHECK_EQUAL(1u, result.size());
 
-  Sentinal const* result_sentinal = std::any_cast<Sentinal>(&result[0]);
+  Sentinal const* result_sentinal = any_cast<Sentinal>(&result[0]);
 
   BOOST_CHECK_EQUAL(0, result_sentinal->copies);
   BOOST_CHECK_EQUAL(1, result_sentinal->moves); // 1 move out of function

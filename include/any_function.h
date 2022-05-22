@@ -1,11 +1,11 @@
 #pragma once
 
+#include "any.h"
 #include "span.h"
 #include "traits.h"
 #include "type.h"
 #include "util.h"
 
-#include <any>
 #include <exception>
 #include <functional>
 
@@ -20,7 +20,7 @@ public:
   template <typename F>
   explicit AnyFunction(F f);
 
-  std::vector<std::any> operator()(Span<std::any*> inputs) const {
+  std::vector<Any> operator()(Span<Any*> inputs) const {
     if(inputs.size() != input_types().size())
       throw BadInvocation();
     return _func(inputs);
@@ -30,7 +30,7 @@ public:
   const std::vector<Type>& output_types() const { return _output_types; }
 
 private:
-  std::function<std::vector<std::any>(Span<std::any*>)> _func;
+  std::function<std::vector<Any>(Span<Any*>)> _func;
 
   std::vector<Type> _input_types;
   std::vector<Type> _output_types;
@@ -38,20 +38,29 @@ private:
 
 namespace details {
 template <typename... Ts, typename F, std::size_t... Is>
-std::vector<std::any> call_with_anys(TL<Ts...>, F& f, Span<std::any*> inputs, std::index_sequence<Is...>) {
-  if(((typeid(std::decay_t<Ts>) != inputs[Is]->type()) || ...)) {
+std::vector<Any> call_with_anys(TL<Ts...>, F& f, Span<Any*> inputs, std::index_sequence<Is...>) {
+  if(((type_id<std::decay_t<Ts>>() != inputs[Is]->type()) || ...)) {
     throw BadInvocation();
   }
-  auto&& result = invoke_normalize_void_return(f, std::move(*std::any_cast<std::decay_t<Ts>>(inputs[Is]))...);
+  auto&& result = invoke_normalize_void_return(f, std::move(*any_cast<std::decay_t<Ts>>(inputs[Is]))...);
 
   if constexpr(is_tuple(decay(Ty<decltype(result)>{}))) {
-    return std::apply([](auto&&... e) { return make_vector<std::any>(std::move(e)...); }, std::move(result));
+    return std::apply([](auto&&... e) { return make_vector<Any>(std::move(e)...); }, std::move(result));
   } else {
-    return make_vector<std::any>(std::move(result));
+    return make_vector<Any>(std::move(result));
   }
 }
 
 } // namespace details
+
+template<typename Range>
+inline std::vector<Any*> any_ptrs(Range&& anys) {
+  std::vector<Any*> ptrs;
+  ptrs.reserve(anys.size());
+  std::transform(anys.begin(), anys.end(), std::back_inserter(ptrs),
+    [](Any& a) { return &a; });
+  return ptrs;
+}
 
 template <typename F>
 AnyFunction::AnyFunction(F f)
@@ -65,7 +74,7 @@ AnyFunction::AnyFunction(F f)
                               all(fn_args, [](auto t) { return is_decayed(t) || is_const_ref(t); });
 
   if constexpr(legal_return && legal_args && is_const<F>()) {
-    _func = [f = std::move(f), fn_args](Span<std::any*> inputs) {
+    _func = [f = std::move(f), fn_args](Span<Any*> inputs) {
       return details::call_with_anys(fn_args, f, inputs, std::make_index_sequence<size(fn_args)>());
     };
   } else {

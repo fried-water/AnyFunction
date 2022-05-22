@@ -6,12 +6,13 @@ find_package(Boost REQUIRED COMPONENTS unit_test_framework system)
 
 add_executable(anyf_test
   test_main.cpp
-  type_test.cpp
+  any_test.cpp
   any_function_test.cpp
+  executor_test.cpp
   graph_test.cpp
   static_graph_test.cpp
-  executor_test.cpp
   stress_test.cpp
+  type_test.cpp
   )
 
 target_link_libraries(anyf_test PRIVATE any_function ${Boost_UNIT_TEST_FRAMEWORK_LIBRARY})

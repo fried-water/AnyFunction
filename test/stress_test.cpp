@@ -46,7 +46,7 @@ auto create_graph(int depth) {
 
 } // namespace
 
-BOOST_AUTO_TEST_CASE(stress_test) {
+BOOST_AUTO_TEST_CASE(stress_test, *boost::unit_test::disabled()) {
   const int depth = 12;
   const int num_executions = 100;
   TBBExecutor executor;
