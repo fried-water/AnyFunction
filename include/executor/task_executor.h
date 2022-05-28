@@ -147,7 +147,10 @@ public:
     _q[i % _count].push(task_group, std::forward<F>(f));
   }
 
-  int create_task_group() { return _next_task_group++; }
+  int create_task_group() {
+    _group_task_counts[_next_task_group] = {};
+    return _next_task_group++;
+  }
 
   bool is_task_group_complete(int task_group) const {
     const auto it = _group_task_counts.find(task_group);

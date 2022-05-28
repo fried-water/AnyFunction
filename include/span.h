@@ -54,4 +54,4 @@ public:
   bool empty() const { return _begin == _end; }
 };
 
-}
+} // namespace anyf

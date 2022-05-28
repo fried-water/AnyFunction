@@ -1,7 +1,7 @@
 #pragma once
 
-#include "util.h"
 #include "type.h"
+#include "util.h"
 
 #include <exception>
 
@@ -16,7 +16,7 @@ struct BadCopy : std::runtime_error {
 };
 
 // Any implementation that works with move-only types (and throws when trying to copy them)
-// TODO: sbo optimization 
+// TODO: sbo optimization
 class Any {
   struct Concept {
     virtual ~Concept() = default;
@@ -24,7 +24,7 @@ class Any {
     virtual std::unique_ptr<Concept> clone() const = 0;
   };
 
-  template<typename T>
+  template <typename T>
   struct Concrete final : Concept {
     Concrete(T&& t) : val(std::move(t)) {}
     Concrete(const T& t) : val(t) {}
@@ -43,12 +43,13 @@ class Any {
   };
 
   std::unique_ptr<Concept> _concept;
- public:
+
+public:
   Any() = default;
 
-  template<typename T, typename = std::enable_if_t<!std::is_same_v<std::decay_t<T>, Any>>>
+  template <typename T, typename = std::enable_if_t<!std::is_same_v<std::decay_t<T>, Any>>>
   Any(T&& t) : _concept(std::make_unique<Concrete<std::decay_t<T>>>(std::forward<T>(t))) {}
-  
+
   Any(Any&&) = default;
   Any& operator=(Any&&) = default;
 
@@ -60,25 +61,28 @@ class Any {
   }
 
   bool has_value() const { return _concept != nullptr; }
-  TypeID type() const { return _concept->type(); }
+  TypeID type() const {
+    check(_concept != nullptr, "oops");
+    return _concept->type();
+  }
 
-  template<typename T>
+  template <typename T>
   friend T& any_cast(Any&);
 
-  template<typename T>
+  template <typename T>
   friend const T& any_cast(const Any&);
 
-  template<typename T>
+  template <typename T>
   friend T&& any_cast(Any&&);
 
-  template<typename T>
+  template <typename T>
   friend T* any_cast(Any*);
 
-  template<typename T>
+  template <typename T>
   friend const T* any_cast(const Any*);
 };
 
-template<typename T>
+template <typename T>
 T& any_cast(Any& any) {
   if(type_id<T>() == any.type()) {
     return static_cast<Any::Concrete<T>&>(*any._concept).val;
@@ -87,7 +91,7 @@ T& any_cast(Any& any) {
   }
 }
 
-template<typename T>
+template <typename T>
 const T& any_cast(const Any& any) {
   if(type_id<T>() == any.type()) {
     return static_cast<const Any::Concrete<T>&>(*any._concept).val;
@@ -96,7 +100,7 @@ const T& any_cast(const Any& any) {
   }
 }
 
-template<typename T>
+template <typename T>
 T&& any_cast(Any&& any) {
   if(type_id<T>() == any.type()) {
     return std::move(static_cast<Any::Concrete<T>&>(*any._concept).val);
@@ -105,7 +109,7 @@ T&& any_cast(Any&& any) {
   }
 }
 
-template<typename T>
+template <typename T>
 T* any_cast(Any* any) {
   if(type_id<T>() == any->type()) {
     return &static_cast<Any::Concrete<T>&>(*any->_concept).val;
@@ -114,13 +118,18 @@ T* any_cast(Any* any) {
   }
 }
 
-template<typename T>
+template <typename T>
 const T* any_cast(const Any* any) {
   if(type_id<T>() == any->type()) {
     return &static_cast<const Any::Concrete<T>&>(*any->_concept).val;
   } else {
     return nullptr;
   }
+}
+
+template <typename T>
+bool holds_alternative(const Any& any) {
+  return type_id<T>() == any.type();
 }
 
 } // namespace anyf

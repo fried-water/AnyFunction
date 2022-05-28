@@ -67,7 +67,7 @@ decltype(auto) invoke_normalize_void_return(F&& f, Inputs&&... inputs) {
 template <typename... Ts>
 [[noreturn]] void error(const char* fmt_string, const Ts&... ts) {
   fmt::print("Error: {}\n", fmt::format(fmt_string, ts...));
-  std::abort();
+  exit(1);
 }
 
 template <typename... Ts>

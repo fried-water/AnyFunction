@@ -53,12 +53,11 @@ std::vector<Any> call_with_anys(TL<Ts...>, F& f, Span<Any*> inputs, std::index_s
 
 } // namespace details
 
-template<typename Range>
+template <typename Range>
 inline std::vector<Any*> any_ptrs(Range&& anys) {
   std::vector<Any*> ptrs;
   ptrs.reserve(anys.size());
-  std::transform(anys.begin(), anys.end(), std::back_inserter(ptrs),
-    [](Any& a) { return &a; });
+  std::transform(anys.begin(), anys.end(), std::back_inserter(ptrs), [](Any& a) { return &a; });
   return ptrs;
 }
 

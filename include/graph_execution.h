@@ -41,7 +41,9 @@ struct alignas(64) FunctionTask {
   // or perhaps forwarding when finished
   std::vector<RefCleanup*> ref_cleanups;
 
-  explicit FunctionTask(int num_inputs) : ref_count(num_inputs), input_vals(num_inputs), input_ptrs(num_inputs) {}
+  // +1 so output and input task never run
+  FunctionTask(bool is_io, int num_inputs)
+      : ref_count(is_io ? num_inputs + 1 : num_inputs), input_vals(num_inputs), input_ptrs(num_inputs) {}
 };
 
 inline void propogate_outputs(std::vector<std::unique_ptr<FunctionTask>>& tasks, std::vector<int>& tasks_to_run,
@@ -115,14 +117,15 @@ void execute_task(const FunctionGraph& g, std::vector<std::unique_ptr<FunctionTa
 
 template <typename Executor>
 std::vector<Any> execute_graph(const FunctionGraph& g, Executor&& executor, std::vector<Any> inputs) {
+  check(inputs.size() == input_types(g).size(), "expected {} inputs given {}", input_types(g).size(), inputs.size());
+
   std::vector<std::unique_ptr<FunctionTask>> tasks;
 
   for(const auto& node : g) {
-    tasks.push_back(
-      std::make_unique<FunctionTask>(std::visit(Overloaded{// +1 so output and input task never run;
-                                                           [](const std::vector<Type>& v) { return v.size() + 1; },
-                                                           [](const AnyFunction& a) { return a.input_types().size(); }},
-                                                node.func)));
+    tasks.push_back(std::visit(
+      Overloaded{[](const std::vector<Type>& v) { return std::make_unique<FunctionTask>(true, v.size()); },
+                 [](const AnyFunction& a) { return std::make_unique<FunctionTask>(false, a.input_types().size()); }},
+      node.func));
   }
 
   tasks.front()->results = std::move(inputs);

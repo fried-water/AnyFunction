@@ -66,6 +66,7 @@ inline Type input_type(const std::vector<Node>& nodes, Term t) {
 }
 
 inline Type output_type(const std::vector<Node>& nodes, Term t) {
+  check(t.node_id < nodes.size(), "node {} out of range ({})", t.node_id, nodes.size());
   return std::visit(Overloaded{[&](const std::vector<Type>& types) { return types[t.port]; },
                                [&](const AnyFunction& f) { return f.output_types()[t.port]; }},
                     nodes[t.node_id].func);
@@ -179,12 +180,14 @@ inline FunctionGraph finalize(ConstructingGraph cg, Span<Term> outputs) {
   std::vector<Type> types;
 
   for(int i = 0; i < outputs.ssize(); i++) {
+    const auto usage_it = cg._usage.find(outputs[i]);
+
     types.push_back(output_type(cg._nodes, outputs[i]));
 
     check(!types.back().is_ref(), "Cannot return a borrowed value for output {}", i);
 
     check(types.back().is_copy_constructible() ||
-            (cg._usage.at(outputs[i]).values == 0 && types.back().is_move_constructible()),
+            ((usage_it == cg._usage.end() || usage_it->second.values == 0) && types.back().is_move_constructible()),
           "Cannot return output {} since its not copy constructible or its already moved");
 
     cg._nodes[outputs[i].node_id].outputs.push_back({outputs[i].port, {static_cast<int>(cg._nodes.size()), i}});
