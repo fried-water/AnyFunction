@@ -1,8 +1,9 @@
-#include "executor/sequential_executor.h"
-#include "executor/task_executor.h"
-#include "executor/tbb_executor.h"
+#include "anyf/executor/sequential_executor.h"
+#include "anyf/executor/task_executor.h"
+#include "anyf/executor/tbb_executor.h"
 
-#include "graph_execution.h"
+#include "anyf/graph_execution.h"
+
 #include "sentinal.h"
 
 #include <boost/test/unit_test.hpp>

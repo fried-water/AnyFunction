@@ -1,9 +1,8 @@
-#include "graph.h"
+#include "anyf/graph.h"
 
 #include <boost/test/unit_test.hpp>
 
 #include <algorithm>
-#include <iostream>
 
 using namespace anyf;
 
