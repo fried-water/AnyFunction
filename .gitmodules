@@ -1,0 +1,3 @@
+[submodule "ext/knot"]
+	path = ext/knot
+	url = https://github.com/fried-water/knot.git

@@ -125,3 +125,15 @@ BOOST_AUTO_TEST_CASE(test_graph_move_only) {
 
   BOOST_CHECK_EQUAL(5, execute_graph(g, SequentialExecutor{}, std::make_unique<int>(5)));
 }
+
+BOOST_AUTO_TEST_CASE(test_graph_fwd) {
+  const Delayed<TypeList<Sentinal>, TypeList<Sentinal>> fwd = Delayed([](Sentinal&& s) -> Sentinal&& { return std::move(s); });
+
+  auto [cg, s] = make_graph<Sentinal>();
+  const auto g = finalize(std::move(cg), fwd(s));
+
+  const Sentinal result = execute_graph(g, SequentialExecutor{}, Sentinal{});
+
+  BOOST_CHECK_EQUAL(0, result.copies);
+  BOOST_CHECK_EQUAL(3, result.moves);
+}

@@ -26,25 +26,25 @@ public:
     return _func(inputs);
   }
 
-  const std::vector<Type>& input_types() const { return _input_types; }
-  const std::vector<Type>& output_types() const { return _output_types; }
+  const std::vector<TypeProperties>& input_types() const { return _input_types; }
+  const std::vector<TypeProperties>& output_types() const { return _output_types; }
 
 private:
   std::function<std::vector<Any>(Span<Any*>)> _func;
 
-  std::vector<Type> _input_types;
-  std::vector<Type> _output_types;
+  std::vector<TypeProperties> _input_types;
+  std::vector<TypeProperties> _output_types;
 };
 
 namespace details {
 template <typename... Ts, typename F, std::size_t... Is>
-std::vector<Any> call_with_anys(TL<Ts...>, F& f, Span<Any*> inputs, std::index_sequence<Is...>) {
-  if(((type_id<std::decay_t<Ts>>() != inputs[Is]->type()) || ...)) {
+std::vector<Any> call_with_anys(TypeList<Ts...>, F& f, Span<Any*> inputs, std::index_sequence<Is...>) {
+  if(((type_id(decay(Type<Ts>{})) != inputs[Is]->type()) || ...)) {
     throw BadInvocation();
   }
   auto&& result = invoke_normalize_void_return(f, std::move(*any_cast<std::decay_t<Ts>>(inputs[Is]))...);
 
-  if constexpr(is_tuple(decay(Ty<decltype(result)>{}))) {
+  if constexpr(is_tuple(decay(Type<decltype(result)>{}))) {
     return std::apply([](auto&&... e) { return make_vector<Any>(std::move(e)...); }, std::move(result));
   } else {
     return make_vector<Any>(std::move(result));
@@ -63,21 +63,24 @@ inline std::vector<Any*> any_ptrs(Range&& anys) {
 
 template <typename F>
 AnyFunction::AnyFunction(F f)
-    : _input_types(make_types(args<F>())), _output_types(make_types(as_tl(return_type<F>()))) {
-  constexpr auto fn_ret = return_type<F>();
-  constexpr auto fn_args = args<F>();
+    : _input_types(make_types(args(Type<F>{})))
+    , _output_types(make_types(return_types(Type<F>{})))
+{
+  constexpr Type<F> f_type = {};
+  constexpr auto fn_ret = return_types(f_type);
+  constexpr auto fn_args = args(f_type);
 
-  constexpr bool legal_return = none(as_tl(fn_ret), [](auto t) { return is_pointer(t); }) &&
-                                all(as_tl(fn_ret), [](auto t) { return is_decayed(t); });
-  constexpr bool legal_args = none(fn_args, [](auto t) { return is_pointer(t); }) &&
-                              all(fn_args, [](auto t) { return is_decayed(t) || is_const_ref(t); });
+  constexpr bool legal_return = none(fn_ret, [](auto t) { return knot::is_raw_pointer(decay(t)); }) &&
+                                all(fn_ret, [](auto t) { return knot::is_decayed(t) || is_rref(t); });
+  constexpr bool legal_args = none(fn_args, [](auto t) { return knot::is_raw_pointer(decay(t)); }) &&
+                              all(fn_args, [](auto t) { return knot::is_decayed(t) || is_const_ref(t) || is_rref(t); });
 
-  if constexpr(legal_return && legal_args && is_const<F>()) {
+  if constexpr(legal_return && legal_args && is_const_function(f_type)) {
     _func = [f = std::move(f), fn_args](Span<Any*> inputs) {
-      return details::call_with_anys(fn_args, f, inputs, std::make_index_sequence<size(fn_args)>());
+      return details::call_with_anys(fn_args, f, inputs, knot::idx_seq(fn_args));
     };
   } else {
-    static_assert(is_const<F>(), "No mutable lambdas and non-const operator().");
+    static_assert(is_const_function(f_type), "No mutable lambdas and non-const operator().");
     static_assert(legal_return, "Function return type must be void, a value or tuple of "
                                 "values (no refs or pointers).");
     static_assert(legal_args, "Function arguments must either be values on "

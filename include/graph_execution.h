@@ -123,7 +123,7 @@ std::vector<Any> execute_graph(const FunctionGraph& g, Executor&& executor, std:
 
   for(const auto& node : g) {
     tasks.push_back(std::visit(
-      Overloaded{[](const std::vector<Type>& v) { return std::make_unique<FunctionTask>(true, v.size()); },
+      Overloaded{[](const std::vector<TypeProperties>& v) { return std::make_unique<FunctionTask>(true, v.size()); },
                  [](const AnyFunction& a) { return std::make_unique<FunctionTask>(false, a.input_types().size()); }},
       node.func));
   }
@@ -137,18 +137,18 @@ std::vector<Any> execute_graph(const FunctionGraph& g, Executor&& executor, std:
     auto it = outputs.begin();
     while(it != outputs.end()) {
       const Term src{i, it->src_port};
-      const Type type = output_type(g, src);
+      const TypeProperties type = output_type(g, src);
 
       const auto next_it = std::find_if(it + 1, outputs.end(), [&](Edge edge) { return src.port != edge.src_port; });
 
       const int num_refs =
-        static_cast<int>(std::count_if(it, next_it, [&](Edge e) { return input_type(g, e.dst).is_ref(); }));
+        static_cast<int>(std::count_if(it, next_it, [&](Edge e) { return input_type(g, e.dst).is_cref(); }));
       std::optional<Term> move_term;
 
       RefCleanup* cleanup = num_refs > 0 ? new RefCleanup{num_refs, src, std::nullopt} : nullptr;
 
       std::for_each(it, next_it, [&](Edge edge) {
-        if(input_type(g, edge.dst).is_ref()) {
+        if(input_type(g, edge.dst).is_cref()) {
           tasks[edge.dst.node_id]->ref_cleanups.push_back(cleanup);
           tasks[i]->refs.push_back(edge);
         } else if(type.is_move_constructible() && !move_term) {
@@ -200,7 +200,7 @@ std::vector<Any> execute_graph(const FunctionGraph& g, Executor&& executor, std:
 }
 
 template <typename... Outputs, typename Executor, typename... Inputs>
-auto execute_graph(const StaticFunctionGraph<TL<Outputs...>, TL<std::decay_t<Inputs>...>>& g, Executor&& executor,
+auto execute_graph(const StaticFunctionGraph<TypeList<Outputs...>, TypeList<std::decay_t<Inputs>...>>& g, Executor&& executor,
                    Inputs&&... inputs) {
   return apply_range<sizeof...(Outputs)>(
     execute_graph(g, std::forward<Executor>(executor), make_vector<Any>(std::forward<Inputs>(inputs)...)),

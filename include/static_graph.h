@@ -27,7 +27,7 @@ template <typename Outputs, typename Inputs>
 class StaticFunctionGraph;
 
 template <typename... Outputs, typename... Inputs>
-struct StaticFunctionGraph<TL<Outputs...>, TL<Inputs...>> : FunctionGraph {
+struct StaticFunctionGraph<TypeList<Outputs...>, TypeList<Inputs...>> : FunctionGraph {
   auto operator()(DelayedEdge<Inputs>... edges) const { return add_to_graph<Outputs...>(*this, edges...); }
 };
 
@@ -35,15 +35,15 @@ template <typename Inputs>
 class StaticConstructingGraph;
 
 template <typename... Inputs>
-struct StaticConstructingGraph<TL<Inputs...>> {
-  std::unique_ptr<ConstructingGraph> cg = std::make_unique<ConstructingGraph>(make_types(TL<Inputs...>{}));
+struct StaticConstructingGraph<TypeList<Inputs...>> {
+  std::unique_ptr<ConstructingGraph> cg = std::make_unique<ConstructingGraph>(make_types(TypeList<Inputs...>{}));
 };
 
 template <typename Outputs, typename Inputs>
 class Delayed;
 
 template <typename... Outputs, typename... Inputs>
-class Delayed<TL<Outputs...>, TL<Inputs...>> {
+class Delayed<TypeList<Outputs...>, TypeList<Inputs...>> {
   static_assert(sizeof...(Inputs) > 0);
 
   AnyFunction _any_function;
@@ -60,7 +60,7 @@ public:
 };
 
 template <typename F>
-Delayed(F f) -> Delayed<decltype(as_tl(return_type<F>())), decltype(decay(args<F>()))>;
+Delayed(F f) -> Delayed<decltype(decay(return_types(Type<F>{}))), decltype(decay(args(Type<F>{})))>;
 
 template <typename... Outputs, size_t... Is>
 std::tuple<DelayedEdge<Outputs>...> output_edges(ConstructingGraph* cg, std::index_sequence<Is...>) {
@@ -68,9 +68,9 @@ std::tuple<DelayedEdge<Outputs>...> output_edges(ConstructingGraph* cg, std::ind
 }
 
 template <typename... Inputs>
-std::tuple<StaticConstructingGraph<TL<Inputs...>>, DelayedEdge<Inputs>...> make_graph() {
+std::tuple<StaticConstructingGraph<TypeList<Inputs...>>, DelayedEdge<Inputs>...> make_graph() {
   static_assert(sizeof...(Inputs) > 0);
-  StaticConstructingGraph<TL<Inputs...>> g;
+  StaticConstructingGraph<TypeList<Inputs...>> g;
 
   ConstructingGraph* cg = g.cg.get();
 
@@ -79,7 +79,7 @@ std::tuple<StaticConstructingGraph<TL<Inputs...>>, DelayedEdge<Inputs>...> make_
 }
 
 template <typename... Outputs, typename... Inputs>
-StaticFunctionGraph<TL<Outputs...>, TL<Inputs...>> finalize(StaticConstructingGraph<TL<Inputs...>> cg,
+StaticFunctionGraph<TypeList<Outputs...>, TypeList<Inputs...>> finalize(StaticConstructingGraph<TypeList<Inputs...>> cg,
                                                             DelayedEdge<Outputs>... edges) {
   check(((edges.cg == cg.cg.get()) && ...), "All edges must come from the same graph");
   return {finalize(std::move(*cg.cg), std::array{edges.term...})};

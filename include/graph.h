@@ -4,6 +4,8 @@
 #include "traits.h"
 #include "util.h"
 
+#include "knot/core.h"
+
 #include <memory>
 #include <optional>
 #include <unordered_map>
@@ -18,27 +20,15 @@ using Port = int;
 struct Term {
   NodeId node_id;
   Port port;
-  friend bool operator==(const Term t1, const Term t2) {
-    return std::tie(t1.node_id, t1.port) == std::tie(t2.node_id, t2.port);
-  }
-  friend bool operator<(const Term t1, const Term t2) {
-    return std::tie(t1.node_id, t1.port) < std::tie(t2.node_id, t2.port);
-  }
+
+  KNOT_ORDERED(Term);
 };
 
 struct Edge {
   Port src_port;
   Term dst;
-  friend bool operator==(const Edge e1, const Edge e2) {
-    return std::tie(e1.src_port, e1.dst) == std::tie(e2.src_port, e2.dst);
-  }
-  friend bool operator<(const Edge e1, const Edge e2) {
-    return std::tie(e1.src_port, e1.dst) < std::tie(e2.src_port, e2.dst);
-  }
-};
 
-struct TermHash {
-  size_t operator()(const Term& t) const { return t.node_id ^ t.port; }
+  KNOT_ORDERED(Edge);
 };
 
 struct TermUsage {
@@ -47,7 +37,7 @@ struct TermUsage {
 };
 
 struct Node {
-  std::variant<AnyFunction, std::vector<Type>> func = std::vector<Type>{};
+  std::variant<AnyFunction, std::vector<TypeProperties>> func = std::vector<TypeProperties>{};
   std::vector<Edge> outputs = {};
 };
 
@@ -59,34 +49,34 @@ inline std::vector<Term> make_terms(NodeId node, int size) {
   return terms;
 }
 
-inline Type input_type(const std::vector<Node>& nodes, Term t) {
-  return std::visit(Overloaded{[&](const std::vector<Type>& types) { return types[t.port]; },
+inline TypeProperties input_type(const std::vector<Node>& nodes, Term t) {
+  return std::visit(Overloaded{[&](const std::vector<TypeProperties>& types) { return types[t.port]; },
                                [&](const AnyFunction& f) { return f.input_types()[t.port]; }},
                     nodes[t.node_id].func);
 }
 
-inline Type output_type(const std::vector<Node>& nodes, Term t) {
+inline TypeProperties output_type(const std::vector<Node>& nodes, Term t) {
   check(t.node_id < nodes.size(), "node {} out of range ({})", t.node_id, nodes.size());
-  return std::visit(Overloaded{[&](const std::vector<Type>& types) { return types[t.port]; },
+  return std::visit(Overloaded{[&](const std::vector<TypeProperties>& types) { return types[t.port]; },
                                [&](const AnyFunction& f) { return f.output_types()[t.port]; }},
                     nodes[t.node_id].func);
 }
 
 using FunctionGraph = std::vector<Node>;
 
-inline const std::vector<Type>& input_types(const FunctionGraph& g) {
-  return std::get<std::vector<Type>>(g.front().func);
+inline const std::vector<TypeProperties>& input_types(const FunctionGraph& g) {
+  return std::get<std::vector<TypeProperties>>(g.front().func);
 }
 
-inline const std::vector<Type>& output_types(const FunctionGraph& g) {
-  return std::get<std::vector<Type>>(g.back().func);
+inline const std::vector<TypeProperties>& output_types(const FunctionGraph& g) {
+  return std::get<std::vector<TypeProperties>>(g.back().func);
 }
 
 class ConstructingGraph {
 public:
   ConstructingGraph() = default;
 
-  explicit ConstructingGraph(std::vector<Type> inputs) { _nodes.push_back({std::move(inputs)}); }
+  explicit ConstructingGraph(std::vector<TypeProperties> inputs) { _nodes.push_back({std::move(inputs)}); }
 
   std::vector<Term> add(AnyFunction f, Span<Term> inputs) {
     const int num_outputs = static_cast<int>(f.output_types().size());
@@ -100,14 +90,14 @@ public:
 
   std::vector<Term> add(const FunctionGraph& f, Span<Term> inputs) {
     check(f.size() >= 2, "F must have atleast 2 nodes");
-    check_types(std::get<std::vector<Type>>(f[0].func), inputs);
+    check_types(std::get<std::vector<TypeProperties>>(f[0].func), inputs);
 
     std::vector<std::vector<Term>> node_inputs(f.size() - 2);
     for(int i = 0; i < static_cast<int>(f.size() - 2); i++) {
       node_inputs[i].resize(std::get<AnyFunction>(f[i + 1].func).input_types().size());
     }
 
-    std::vector<Term> outputs(std::get<std::vector<Type>>(f.back().func).size());
+    std::vector<Term> outputs(std::get<std::vector<TypeProperties>>(f.back().func).size());
 
     const int initial_node_offset = static_cast<int>(_nodes.size()) - 1;
 
@@ -132,17 +122,17 @@ public:
   friend FunctionGraph finalize(ConstructingGraph, Span<Term>);
 
 private:
-  void check_types(const std::vector<Type>& expected_types, Span<Term> inputs) const {
+  void check_types(const std::vector<TypeProperties>& expected_types, Span<Term> inputs) const {
     check(inputs.size() == expected_types.size(), "Function expected {} arguments, given {}", expected_types.size(),
           inputs.size());
 
     for(int i = 0; i < inputs.ssize(); i++) {
       const auto& term = inputs[i];
-      const Type input_type = expected_types[i];
+      const TypeProperties input_type = expected_types[i];
 
       check(output_type(_nodes, term).type_id() == input_type.type_id(), "Type mismatch at argument {}", i);
 
-      if(input_type.is_ref() || input_type.is_copy_constructible()) {
+      if(input_type.is_cref() || input_type.is_copy_constructible()) {
         // Always fine
       } else if(input_type.is_move_constructible()) {
         const auto it = _usage.find(term);
@@ -157,7 +147,7 @@ private:
     for(int i = 0; i < inputs.ssize(); i++) {
       const auto term = inputs[i];
 
-      if(output_type(_nodes, term).is_ref()) {
+      if(output_type(_nodes, term).is_cref()) {
         _usage[term].borrows++;
       } else {
         _usage[term].values++;
@@ -168,23 +158,23 @@ private:
   }
 
   std::vector<Node> _nodes;
-  std::unordered_map<Term, TermUsage, TermHash> _usage;
+  std::unordered_map<Term, TermUsage, knot::Hash> _usage;
 };
 
-inline std::tuple<ConstructingGraph, std::vector<Term>> make_graph(std::vector<Type> types) {
+inline std::tuple<ConstructingGraph, std::vector<Term>> make_graph(std::vector<TypeProperties> types) {
   const int num_inputs = static_cast<int>(types.size());
   return {ConstructingGraph{std::move(types)}, make_terms(0, num_inputs)};
 }
 
 inline FunctionGraph finalize(ConstructingGraph cg, Span<Term> outputs) {
-  std::vector<Type> types;
+  std::vector<TypeProperties> types;
 
   for(int i = 0; i < outputs.ssize(); i++) {
     const auto usage_it = cg._usage.find(outputs[i]);
 
     types.push_back(output_type(cg._nodes, outputs[i]));
 
-    check(!types.back().is_ref(), "Cannot return a borrowed value for output {}", i);
+    check(!types.back().is_lref(), "Cannot return a borrowed value for output {}", i);
 
     check(types.back().is_copy_constructible() ||
             ((usage_it == cg._usage.end() || usage_it->second.values == 0) && types.back().is_move_constructible()),

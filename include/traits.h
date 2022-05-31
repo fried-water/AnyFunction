@@ -1,114 +1,56 @@
 #pragma once
 
+#include <knot/core.h>
+
 #include <functional>
 #include <tuple>
 #include <type_traits>
 
 namespace anyf {
 
-template <typename T>
-struct Ty {
-  using type = T;
-};
+using knot::Type;
+using knot::TypeList;
+using knot::TypeCategory;
 
-template <typename... Ts>
-struct TL {};
-
-template <typename... Ts>
-constexpr size_t size(TL<Ts...>) {
-  return sizeof...(Ts);
-}
-
-template <typename T, typename... Ts>
-constexpr auto head(TL<T, Ts...>) {
-  return Ty<T>{};
-}
-
-template <typename T, typename... Ts>
-constexpr auto tail(TL<T, Ts...>) {
-  return TL<Ts...>{};
+template <typename... Ts, typename F>
+constexpr bool all(TypeList<Ts...>, F f) {
+  return (f(Type<Ts>{}) && ...);
 }
 
 template <typename... Ts, typename F>
-constexpr auto map(TL<Ts...>, F f) {
-  return TL{typename decltype(f(Ty<Ts>{}))::type{}...};
+constexpr bool any(TypeList<Ts...>, F f) {
+  return (f(Type<Ts>{}) || ...);
 }
 
 template <typename... Ts, typename F>
-constexpr auto map_value(TL<Ts...>, F f) {
-  return std::array{f(Ty<Ts>{})...};
-}
-
-template <typename... Ts, typename F>
-constexpr int count_if(TL<Ts...>, F f) {
-  return ((f(Ty<Ts>{}) ? 1 : 0) + ...);
-}
-
-template <typename... Ts, typename F>
-constexpr bool all(TL<Ts...>, F f) {
-  return (f(Ty<Ts>{}) && ...);
-}
-
-template <typename... Ts, typename F>
-constexpr bool any(TL<Ts...>, F f) {
-  return (f(Ty<Ts>{}) || ...);
-}
-
-template <typename... Ts, typename F>
-constexpr bool none(TL<Ts...>, F f) {
-  return (!f(Ty<Ts>{}) && ...);
-}
-
-template <typename T, typename T2>
-constexpr bool is_same(Ty<T>, Ty<T2>) {
-  return std::is_same_v<T, T2>;
-}
-
-template <typename T>
-constexpr bool is_pointer(Ty<T>) {
-  return std::is_pointer_v<T>;
-}
-
-template <typename T>
-constexpr bool is_decayed(Ty<T>) {
-  return std::is_same_v<T, std::decay_t<T>>;
-}
-
-template <typename T>
-constexpr bool is_const_ref(Ty<T>) {
-  return std::is_same_v<T, const std::decay_t<T>&>;
-}
-
-template <typename T>
-constexpr bool is_tuple(Ty<T>) {
-  return false;
+constexpr bool none(TypeList<Ts...>, F f) {
+  return (!f(Type<Ts>{}) && ...);
 }
 
 template <typename... Ts>
-constexpr bool is_tuple(Ty<std::tuple<Ts...>>) {
-  return true;
+constexpr auto decay(TypeList<Ts...> tl) {
+  return knot::map(tl, [](auto t) { return decay(t); });
+}
+
+
+template <typename T>
+constexpr bool is_const(Type<T>) {
+  return std::is_const_v<std::remove_reference_t<T>>;
 }
 
 template <typename T>
-constexpr auto decay(Ty<T>) {
-  return Ty<std::decay_t<T>>{};
+constexpr bool is_lref(Type<T>) {
+  return std::is_lvalue_reference_v<T>;
 }
-
-template <typename... Ts>
-constexpr auto decay(TL<Ts...>) {
-  return TL<std::decay_t<Ts>...>{};
-}
-
-constexpr auto as_tl(Ty<void>) { return TL<>{}; }
 
 template <typename T>
-constexpr auto as_tl(Ty<T>) {
-  return TL<T>{};
+constexpr bool is_rref(Type<T> t) {
+  return std::is_rvalue_reference_v<T> && !is_const(t);
 }
 
-template <typename... Ts>
-constexpr auto as_tl(Ty<std::tuple<Ts...>>) {
-  return TL<Ts...>{};
+template <typename T>
+constexpr bool is_const_ref(Type<T> t) {
+  return is_const(t) && is_lref(t);
 }
 
 namespace detail {
@@ -122,48 +64,50 @@ struct function_traits : public function_traits<decltype(&Function::operator())>
 template <typename Class, typename Ret, typename... Args>
 struct function_traits<Ret (Class::*)(Args...) const> {
   static constexpr bool is_const = true;
-  static constexpr Ty<Ret> return_type = {};
-  static constexpr TL<Args...> args = {};
+  static constexpr Type<Ret> return_type = {};
+  static constexpr TypeList<Args...> args = {};
 };
 
 template <typename Class, typename Ret, typename... Args>
 struct function_traits<Ret (Class::*)(Args...)> {
   static constexpr bool is_const = true;
-  static constexpr Ty<Ret> return_type = {};
-  static constexpr TL<Args...> args = {};
+  static constexpr Type<Ret> return_type = {};
+  static constexpr TypeList<Args...> args = {};
 };
 
 template <typename Ret, typename... Args>
 struct function_traits<Ret (*)(Args...)> {
   static constexpr bool is_const = true;
-  static constexpr Ty<Ret> return_type = {};
-  static constexpr TL<Args...> args = {};
+  static constexpr Type<Ret> return_type = {};
+  static constexpr TypeList<Args...> args = {};
 };
 
 } // namespace detail
 
 template <typename F>
-constexpr auto return_type() {
+constexpr auto return_type(Type<F>) {
   return detail::function_traits<F>::return_type;
 }
 
 template <typename F>
-constexpr auto args() {
+constexpr auto return_types(Type<F> f) {
+  const auto r = return_type(f); 
+  if constexpr (Type<void>{} == r) {
+    return knot::typelist();
+  } else if constexpr(is_tuple(r)) {
+    return knot::as_typelist(r);
+  } else {
+    return knot::typelist(r);
+  }
+}
+
+template <typename F>
+constexpr auto args(Type<F>) {
   return detail::function_traits<F>::args;
 }
 
 template <typename F>
-constexpr auto arity() {
-  return size(args<F>());
-}
-
-template <typename F>
-constexpr auto num_outputs() {
-  return size(as_tl(return_type<F>()));
-}
-
-template <typename F>
-constexpr bool is_const() {
+constexpr bool is_const_function(Type<F>) {
   return detail::function_traits<F>::is_const;
 }
 

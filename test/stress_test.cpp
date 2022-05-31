@@ -1,4 +1,4 @@
-#include "executor/tbb_executor.h"
+#include "executor/task_executor.h"
 
 #include "graph_execution.h"
 
@@ -15,14 +15,8 @@ int identity(int x) { return x; }
 
 int sum(const int& x, int y) { return x + y; }
 
-struct IntPairHash {
-  std::size_t operator()(std::pair<int, int> p) const {
-    return (((std::size_t)p.first) << 32) + ((std::size_t)p.second);
-  }
-};
-
 auto create_graph(int depth) {
-  std::unordered_map<std::pair<int, int>, DelayedEdge<int>, IntPairHash> edges;
+  std::unordered_map<std::pair<int, int>, DelayedEdge<int>, knot::Hash> edges;
 
   auto Delayed_copy = Delayed(identity);
   auto Delayed_sum = Delayed(sum);
@@ -49,25 +43,22 @@ auto create_graph(int depth) {
 BOOST_AUTO_TEST_CASE(stress_test, *boost::unit_test::disabled()) {
   const int depth = 12;
   const int num_executions = 100;
-  TBBExecutor executor;
+  TaskExecutor executor;
 
-  std::cout << "Thread count: " << std::thread::hardware_concurrency() << '\n';
-  std::cout << "Creating graph of size " << ((1 << depth) * 2 - 1) << "\n";
+  fmt::print("Thread count: {}\n", std::thread::hardware_concurrency());
+  fmt::print("Creating graph of size {}\n", ((1 << depth) * 2 - 1));
 
   auto t0 = std::chrono::steady_clock::now();
   auto g = create_graph(depth);
-  auto t1 = std::chrono::steady_clock::now();
 
-  std::cout << "Creating graph took " << std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0).count()
-            << "ms\n";
+  fmt::print("Creating graph took {}ms\n", std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - t0).count());
 
   t0 = std::chrono::steady_clock::now();
   int result = -1;
   for(int i = 0; i < num_executions; i++) {
     result = execute_graph(g, executor, 1);
   }
-  t1 = std::chrono::steady_clock::now();
 
-  std::cout << "Result is " << result << ", " << num_executions << " executions took "
-            << std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0).count() << "ms\n";
+  fmt::print("Result is {}, {} executions took {}ms\n", result, num_executions ,
+    std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - t0).count());
 }

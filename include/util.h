@@ -56,7 +56,7 @@ decltype(auto) apply_range(Range&& range, F f) {
 
 template <typename F, typename... Inputs>
 decltype(auto) invoke_normalize_void_return(F&& f, Inputs&&... inputs) {
-  if constexpr(is_same(Ty<void>{}, return_type<std::decay_t<F>>())) {
+  if constexpr(Type<void>{} == return_type(decay(Type<F>({})))) {
     std::forward<F>(f)(std::forward<Inputs>(inputs)...);
     return std::tuple();
   } else {

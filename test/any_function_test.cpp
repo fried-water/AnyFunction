@@ -24,7 +24,7 @@ auto tuple_fp() { return std::tuple('a', 1); };
 
 void no_args(){};
 void one_arg(int){};
-void many_args(std::tuple<>, const std::string, char const&){};
+void many_args(std::tuple<>, const std::string, const char&){};
 
 }; // namespace
 
@@ -33,9 +33,9 @@ BOOST_AUTO_TEST_CASE(test_any_function_return_types) {
   const auto single_func = AnyFunction(simple_fp);
   const auto tuple_func = AnyFunction(tuple_fp);
 
-  BOOST_CHECK(std::vector<Type>{} == void_func.output_types());
-  BOOST_CHECK(std::vector<Type>{Type(Ty<int>())} == single_func.output_types());
-  BOOST_CHECK((std::vector{Type(Ty<char>()), Type(Ty<int>())}) == tuple_func.output_types());
+  BOOST_CHECK(make_types(TypeList<>{}) == void_func.output_types());
+  BOOST_CHECK(make_types(TypeList<int>{}) == single_func.output_types());
+  BOOST_CHECK(make_types(TypeList<char, int>{}) == tuple_func.output_types());
 
   BOOST_CHECK(std::tuple() == invoke_with_values(void_func));
   BOOST_CHECK(std::tuple(1) == invoke_with_values<int>(single_func));
@@ -47,10 +47,10 @@ BOOST_AUTO_TEST_CASE(test_any_function_input_types) {
   const auto one_arg_func = AnyFunction(one_arg);
   const auto many_args_func = AnyFunction(many_args);
 
-  BOOST_CHECK(std::vector<Type>{} == no_args_func.input_types());
-  BOOST_CHECK(std::vector<Type>{Type(Ty<int>())} == one_arg_func.input_types());
-  BOOST_CHECK((std::vector<Type>{Type(Ty<std::tuple<>>()), Type(Ty<std::string>()), Type(Ty<char const&>())}) ==
-              many_args_func.input_types());
+  BOOST_CHECK(make_types(TypeList<>{}) == no_args_func.input_types());
+  BOOST_CHECK(make_types(TypeList<int>{}) == one_arg_func.input_types());
+  BOOST_CHECK(make_types(TypeList<std::tuple<>, std::string, const char&>{}) ==
+    many_args_func.input_types());
 }
 
 bool valid_exception(BadCast const&) { return true; }
@@ -101,8 +101,24 @@ BOOST_AUTO_TEST_CASE(test_any_function_num_moves_copies) {
 
   BOOST_CHECK_EQUAL(1u, result.size());
 
-  Sentinal const* result_sentinal = any_cast<Sentinal>(&result[0]);
+  const Sentinal* result_sentinal = any_cast<Sentinal>(&result[0]);
 
   BOOST_CHECK_EQUAL(0, result_sentinal->copies);
   BOOST_CHECK_EQUAL(1, result_sentinal->moves); // 1 move out of function
+}
+
+BOOST_AUTO_TEST_CASE(test_any_function_fwd) {
+  const auto sentinal_func = AnyFunction([](Sentinal&& x) -> Sentinal&& {
+    return std::move(x);
+  });
+
+  auto input_vals = make_vector<Any>(Sentinal{});
+  auto result = sentinal_func(any_ptrs(input_vals));
+
+  BOOST_CHECK_EQUAL(1u, result.size());
+
+  const Sentinal* result_sentinal = any_cast<Sentinal>(&result[0]);
+
+  BOOST_CHECK_EQUAL(0, result_sentinal->copies);
+  BOOST_CHECK_EQUAL(2, result_sentinal->moves); // 1 move into any, 1 move into result
 }
