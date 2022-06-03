@@ -4,9 +4,14 @@
 
 #include <algorithm>
 
-using namespace anyf;
+namespace anyf {
 
 namespace {
+
+struct MoveOnly {
+  MoveOnly(const MoveOnly&) = delete;
+  MoveOnly(MoveOnly&&) = default;
+};
 
 int identity(int x) { return x; }
 int cidentity(const int& x) { return x; }
@@ -23,9 +28,9 @@ bool compare_node_outputs(const Node& expected, const Node& actual) { return exp
 
 BOOST_AUTO_TEST_CASE(simple_graph_construction) {
   auto [cg, inputs] = make_graph(make_types(TypeList<int, int>{}));
-  const auto id_outputs = cg.add(AnyFunction(cidentity), std::array{inputs[0]});
-  const auto sum_outputs = cg.add(AnyFunction(sum), std::array{id_outputs[0], inputs[1]});
-  const FunctionGraph g = finalize(std::move(cg), sum_outputs);
+  const auto id_outputs = cg.add(AnyFunction(cidentity), std::array{inputs[0]}).value();
+  const auto sum_outputs = cg.add(AnyFunction(sum), std::array{id_outputs[0], inputs[1]}).value();
+  const FunctionGraph g = std::move(cg).finalize(sum_outputs).value();
 
   const std::vector<std::vector<Edge>> expected_edges{{{0, {1, 0}}, {1, {2, 1}}}, {{0, {2, 0}}}, {{0, {3, 0}}}, {}};
 
@@ -40,17 +45,16 @@ BOOST_AUTO_TEST_CASE(simple_graph_construction) {
 }
 
 BOOST_AUTO_TEST_CASE(simple_inner_graph) {
-
   auto [inner_cg, inner_inputs] = make_graph(make_types(TypeList<int, int>{}));
-  const auto inner_id_outputs = inner_cg.add(AnyFunction(cidentity), std::array{inner_inputs[0]});
-  const auto inner_sum_outputs = inner_cg.add(AnyFunction(sum), std::array{inner_id_outputs[0], inner_inputs[1]});
-  const FunctionGraph inner_g = finalize(std::move(inner_cg), inner_sum_outputs);
+  const auto inner_id_outputs = inner_cg.add(AnyFunction(cidentity), std::array{inner_inputs[0]}).value();
+  const auto inner_sum_outputs = inner_cg.add(AnyFunction(sum), std::array{inner_id_outputs[0], inner_inputs[1]}).value();
+  const FunctionGraph inner_g = std::move(inner_cg).finalize(inner_sum_outputs).value();
 
   auto [cg, inputs] = make_graph(make_types(TypeList<int, int>{}));
-  const auto id_outputs = cg.add(AnyFunction(identity), std::array{inputs[0]});
-  const auto g_outputs = cg.add(inner_g, std::array{id_outputs[0], inputs[1]});
-  const auto by2_outputs = cg.add(AnyFunction(by2), g_outputs);
-  const FunctionGraph g = finalize(std::move(cg), by2_outputs);
+  const auto id_outputs = cg.add(AnyFunction(identity), std::array{inputs[0]}).value();
+  const auto g_outputs = cg.add(inner_g, std::array{id_outputs[0], inputs[1]}).value();
+  const auto by2_outputs = cg.add(AnyFunction(by2), g_outputs).value();
+  const FunctionGraph g = std::move(cg).finalize(by2_outputs).value();
 
   BOOST_CHECK((std::vector<Term>{{0, 0}, {0, 1}}) == inputs);
   BOOST_CHECK((std::vector<Term>{{1, 0}}) == id_outputs);
@@ -62,3 +66,17 @@ BOOST_AUTO_TEST_CASE(simple_inner_graph) {
 
   BOOST_CHECK(std::equal(expected_edges.begin(), expected_edges.end(), g.begin(), g.end(), compare_edges_to_nodes));
 }
+
+BOOST_AUTO_TEST_CASE(graph_errors) {
+  auto [cg, inputs] = make_graph(make_types(TypeList<int, char, MoveOnly>{}));
+  BOOST_CHECK((GraphError{BadArity{1, 2}})
+    == cg.add(AnyFunction(identity), std::array{inputs[0], inputs[0]}).error());
+
+  BOOST_CHECK((GraphError{BadType{0, type_id(Type<int>{}), type_id(Type<char>{})}})
+    == cg.add(AnyFunction(identity), std::array{inputs[1]}).error());
+
+  BOOST_CHECK((GraphError{AlreadyMoved{1, type_id(Type<MoveOnly>{})}})
+    == cg.add(AnyFunction([](MoveOnly, MoveOnly) { return 0; }), std::array{inputs[2], inputs[2]}).error());
+}
+
+} // namespace anyf

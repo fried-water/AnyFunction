@@ -1,3 +1,6 @@
 [submodule "ext/knot"]
 	path = ext/knot
 	url = https://github.com/fried-water/knot.git
+[submodule "ext/expected"]
+	path = ext/expected
+	url = https://github.com/TartanLlama/expected.git

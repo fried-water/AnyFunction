@@ -5,6 +5,7 @@
 #include "anyf/util.h"
 
 #include "knot/core.h"
+#include "tl/expected.hpp"
 
 #include <memory>
 #include <optional>
@@ -40,6 +41,42 @@ struct Node {
   std::variant<AnyFunction, std::vector<TypeProperties>> func = std::vector<TypeProperties>{};
   std::vector<Edge> outputs = {};
 };
+
+struct BadArity {
+  int expected = 0;
+  int given = 0;
+
+  KNOT_ORDERED(BadArity);
+};
+
+struct BadType {
+  int index = 0;
+  TypeID expected;
+  TypeID given;
+
+  KNOT_ORDERED(BadType);
+};
+
+struct AlreadyMoved {
+  int index = 0;
+  TypeID type;
+
+  KNOT_ORDERED(AlreadyMoved);
+};
+
+inline std::string msg(const BadArity& e) {
+  return fmt::format("Expected {} arguments, given {}", e.expected, e.given);
+}
+
+inline std::string msg(const BadType& e) {
+  return fmt::format("Incorrect type for argument {}", e.index);
+}
+
+inline std::string msg(const AlreadyMoved& e) {
+  return fmt::format("Value for argument {} already moved", e.index);
+}
+
+using GraphError = std::variant<BadArity, BadType, AlreadyMoved>;
 
 inline std::vector<Term> make_terms(NodeId node, int size) {
   std::vector<Term> terms;
@@ -78,19 +115,28 @@ public:
 
   explicit ConstructingGraph(std::vector<TypeProperties> inputs) { _nodes.push_back({std::move(inputs)}); }
 
-  std::vector<Term> add(AnyFunction f, Span<Term> inputs) {
+  tl::expected<std::vector<Term>, GraphError> add(AnyFunction f, Span<Term> inputs) {
     const int num_outputs = static_cast<int>(f.output_types().size());
 
-    check_types(f.input_types(), inputs);
+    const auto check_result = check_types(f.input_types(), inputs);
+
+    if(!check_result) {
+      return tl::unexpected{check_result.error()};
+    }
+
     add_edges(inputs);
     _nodes.push_back({std::move(f)});
 
     return make_terms(static_cast<int>(_nodes.size() - 1), num_outputs);
   }
 
-  std::vector<Term> add(const FunctionGraph& f, Span<Term> inputs) {
+  tl::expected<std::vector<Term>, GraphError> add(const FunctionGraph& f, Span<Term> inputs) {
     check(f.size() >= 2, "F must have atleast 2 nodes");
-    check_types(std::get<std::vector<TypeProperties>>(f[0].func), inputs);
+    const auto check_result = check_types(std::get<std::vector<TypeProperties>>(f[0].func), inputs);
+
+    if(!check_result) {
+      return tl::unexpected{check_result.error()};
+    }
 
     std::vector<std::vector<Term>> node_inputs(f.size() - 2);
     for(int i = 0; i < static_cast<int>(f.size() - 2); i++) {
@@ -119,28 +165,62 @@ public:
     return outputs;
   }
 
-  friend FunctionGraph finalize(ConstructingGraph, Span<Term>);
+  tl::expected<FunctionGraph, GraphError> finalize(Span<Term> outputs) && {
+    std::vector<TypeProperties> types;
+    std::transform(outputs.begin(), outputs.end(), std::back_inserter(types),
+      [&](Term t) { return output_type(_nodes, t).decayed(); });
+
+    const auto check_result = check_types(types, outputs);
+
+    if(!check_result) {
+      return tl::unexpected{check_result.error()};
+    }
+
+    add_edges(outputs);
+    _nodes.push_back({std::move(types)});
+
+    for(auto& [func, outputs] : _nodes) {
+      std::sort(outputs.begin(), outputs.end());
+    }
+
+    _usage.clear();
+    return std::move(_nodes);
+  }
 
 private:
-  void check_types(const std::vector<TypeProperties>& expected_types, Span<Term> inputs) const {
-    check(inputs.size() == expected_types.size(), "Function expected {} arguments, given {}", expected_types.size(),
-          inputs.size());
+  tl::expected<std::monostate, GraphError> check_types(const std::vector<TypeProperties>& expected_types, Span<Term> inputs) const {
+    if(inputs.size() != expected_types.size()) {
+      return tl::unexpected{BadArity{int(expected_types.size()), int(inputs.size())}};
+    }
+
+    // inputs moved in this invocation alone
+    std::vector<Term> moved_inputs;
 
     for(int i = 0; i < inputs.ssize(); i++) {
       const auto& term = inputs[i];
       const TypeProperties input_type = expected_types[i];
 
-      check(output_type(_nodes, term).type_id() == input_type.type_id(), "Type mismatch at argument {}", i);
+      if(output_type(_nodes, term).type_id() != input_type.type_id()) {
+        return tl::unexpected{BadType{i, input_type.type_id(), output_type(_nodes, term).type_id()}};
+      }
 
       if(input_type.is_cref() || input_type.is_copy_constructible()) {
         // Always fine
-      } else if(input_type.is_move_constructible()) {
-        const auto it = _usage.find(term);
-        check(it == _usage.end() || it->second.values == 0, "Argument {} already moved", i);
       } else {
-        error("Argument {} cannot be moved or copied", i);
+        // Shouldnt be able to compile an any_function with an argument like this
+        check(input_type.is_move_constructible(), "Error: type not moveable or copyable");
+
+        const auto usage_it = _usage.find(term);
+        const auto cur_it = std::find(moved_inputs.begin(), moved_inputs.end(), term);
+        if(cur_it != moved_inputs.end() || (usage_it != _usage.end() && usage_it->second.values > 0)) {
+          return tl::unexpected{AlreadyMoved{i, input_type.type_id()}};
+        } else {
+          moved_inputs.push_back(term);
+        }
       }
     }
+
+    return std::monostate{};
   }
 
   void add_edges(Span<Term> inputs) {
@@ -164,32 +244,6 @@ private:
 inline std::tuple<ConstructingGraph, std::vector<Term>> make_graph(std::vector<TypeProperties> types) {
   const int num_inputs = static_cast<int>(types.size());
   return {ConstructingGraph{std::move(types)}, make_terms(0, num_inputs)};
-}
-
-inline FunctionGraph finalize(ConstructingGraph cg, Span<Term> outputs) {
-  std::vector<TypeProperties> types;
-
-  for(int i = 0; i < outputs.ssize(); i++) {
-    const auto usage_it = cg._usage.find(outputs[i]);
-
-    types.push_back(output_type(cg._nodes, outputs[i]));
-
-    check(!types.back().is_lref(), "Cannot return a borrowed value for output {}", i);
-
-    check(types.back().is_copy_constructible() ||
-            ((usage_it == cg._usage.end() || usage_it->second.values == 0) && types.back().is_move_constructible()),
-          "Cannot return output {} since its not copy constructible or its already moved");
-
-    cg._nodes[outputs[i].node_id].outputs.push_back({outputs[i].port, {static_cast<int>(cg._nodes.size()), i}});
-  }
-
-  cg._nodes.push_back({std::move(types)});
-
-  for(auto& [func, outputs] : cg._nodes) {
-    std::sort(outputs.begin(), outputs.end());
-  }
-
-  return std::move(cg._nodes);
 }
 
 } // namespace anyf

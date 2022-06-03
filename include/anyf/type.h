@@ -50,7 +50,11 @@ public:
   constexpr bool is_copy_constructible() const { return (_properties & COPYABLE_FLAG) > 0; }
   constexpr bool is_move_constructible() const { return (_properties & MOVEABLE_FLAG) > 0; }
 
-  constexpr auto props() const { return _properties; }
+  constexpr TypeProperties decayed() const {
+    TypeProperties copy = *this;
+    copy._properties &= (TypeProperties::COPYABLE_FLAG | TypeProperties::MOVEABLE_FLAG);
+    return copy;
+  }
 
   constexpr friend bool operator==(const TypeProperties& lhs, const TypeProperties& rhs) {
     return lhs.type_id() == rhs.type_id() && lhs._properties == rhs._properties;

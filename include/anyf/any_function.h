@@ -11,7 +11,7 @@
 
 namespace anyf {
 
-struct BadInvocation : std::exception {
+struct BadInvocation final : std::exception {
   const char* what() const noexcept override { return "bad invocation"; }
 };
 
@@ -20,11 +20,7 @@ public:
   template <typename F>
   explicit AnyFunction(F f);
 
-  std::vector<Any> operator()(Span<Any*> inputs) const {
-    if(inputs.size() != input_types().size())
-      throw BadInvocation();
-    return _func(inputs);
-  }
+  std::vector<Any> operator()(Span<Any*> inputs) const { return _func(inputs); }
 
   const std::vector<TypeProperties>& input_types() const { return _input_types; }
   const std::vector<TypeProperties>& output_types() const { return _output_types; }
@@ -39,7 +35,7 @@ private:
 namespace details {
 template <typename... Ts, typename F, std::size_t... Is>
 std::vector<Any> call_with_anys(TypeList<Ts...>, F& f, Span<Any*> inputs, std::index_sequence<Is...>) {
-  if(((type_id(decay(Type<Ts>{})) != inputs[Is]->type()) || ...)) {
+  if(inputs.size() != sizeof...(Ts) || ((type_id(decay(Type<Ts>{})) != inputs[Is]->type()) || ...)) {
     throw BadInvocation();
   }
   auto&& result = invoke_normalize_void_return(f, std::move(*any_cast<std::decay_t<Ts>>(inputs[Is]))...);
