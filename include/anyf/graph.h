@@ -187,6 +187,8 @@ public:
     return std::move(_nodes);
   }
 
+  TypeProperties type(Term t) const { return output_type(_nodes, t); }
+
 private:
   tl::expected<std::monostate, GraphError> check_types(const std::vector<TypeProperties>& expected_types, Span<Term> inputs) const {
     if(inputs.size() != expected_types.size()) {
