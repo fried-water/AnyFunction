@@ -24,6 +24,8 @@ public:
   template <typename F>
   explicit AnyFunction(F f);
 
+  explicit AnyFunction(TypeProperties, Any);
+
   std::vector<Any> operator()(Span<Any*> inputs) const { return _func(inputs); }
 
   const std::vector<TypeProperties>& input_types() const { return _input_types; }
@@ -92,6 +94,10 @@ AnyFunction::AnyFunction(F f)
     throw;
   }
 }
+
+inline AnyFunction::AnyFunction(TypeProperties props, Any any)
+    : _func([a = std::move(any)](Span<Any*>) { return std::vector<Any>{a}; })
+    , _output_types{props} {}
 
 inline AnyFunction AnyFunction::bind(Any v, int idx) const {
   if(idx >= _input_types.size() || idx < 0 || _input_types[idx].type_id() != v.type()) {
