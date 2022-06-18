@@ -54,8 +54,9 @@ BOOST_AUTO_TEST_CASE(test_any_function_input_types) {
     many_args_func.input_types());
 }
 
-bool valid_exception(BadCast const&) { return true; }
-bool valid_exception(BadInvocation const&) { return true; }
+bool valid_exception(const BadCast&) { return true; }
+bool valid_exception(const BadInvocation&) { return true; }
+bool valid_exception(const BadBind&) { return true; }
 
 BOOST_AUTO_TEST_CASE(test_any_function_incorrect_args) {
   const auto func = AnyFunction([](int) {});
@@ -122,4 +123,34 @@ BOOST_AUTO_TEST_CASE(test_any_function_fwd) {
 
   BOOST_CHECK_EQUAL(0, result_sentinal->copies);
   BOOST_CHECK_EQUAL(2, result_sentinal->moves); // 1 move into any, 1 move into result
+}
+
+BOOST_AUTO_TEST_CASE(test_any_function_bind) {
+  const auto func = AnyFunction([](int x, int y) { return x + y; });
+
+  const auto bind_x = func.bind(5, 0);
+
+  BOOST_CHECK_EQUAL(5, std::get<0>(invoke_with_values<int>(bind_x, 0)));
+  BOOST_CHECK_EQUAL(6, std::get<0>(invoke_with_values<int>(bind_x, 1)));
+
+  const auto bind_y = bind_x.bind(3, 0);
+
+  BOOST_CHECK_EQUAL(8, std::get<0>(invoke_with_values<int>(bind_y)));
+}
+
+BOOST_AUTO_TEST_CASE(test_any_function_bind_error) {
+  const auto func = AnyFunction([](int x, int y) { return x + y; });
+
+  BOOST_CHECK_EXCEPTION(func.bind(5, -1), BadBind, valid_exception);
+  BOOST_CHECK_EXCEPTION(func.bind(5, 2), BadBind, valid_exception);
+  BOOST_CHECK_EXCEPTION(func.bind("abc", 0), BadBind, valid_exception);
+}
+
+BOOST_AUTO_TEST_CASE(test_any_function_bind_consume) {
+  const auto func = AnyFunction([](std::vector<int> x) { return x.size(); });
+  const auto bind_vec = func.bind(std::vector<int>{3}, 0);
+
+  // First call will consume the bound vector
+  BOOST_CHECK_EQUAL(1, std::get<0>(invoke_with_values<size_t>(bind_vec)));
+  BOOST_CHECK_EQUAL(0, std::get<0>(invoke_with_values<size_t>(bind_vec)));
 }

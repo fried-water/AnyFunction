@@ -15,6 +15,10 @@ struct BadInvocation final : std::exception {
   const char* what() const noexcept override { return "bad invocation"; }
 };
 
+struct BadBind final : std::exception {
+  const char* what() const noexcept override { return "bad bind"; }
+};
+
 class AnyFunction {
 public:
   template <typename F>
@@ -25,7 +29,11 @@ public:
   const std::vector<TypeProperties>& input_types() const { return _input_types; }
   const std::vector<TypeProperties>& output_types() const { return _output_types; }
 
+  AnyFunction bind(Any, int idx) const;
+
 private:
+  AnyFunction() = default;
+
   std::function<std::vector<Any>(Span<Any*>)> _func;
 
   std::vector<TypeProperties> _input_types;
@@ -83,6 +91,32 @@ AnyFunction::AnyFunction(F f)
                               "const refs (no non-const refs or pointers).");
     throw;
   }
+}
+
+inline AnyFunction AnyFunction::bind(Any v, int idx) const {
+  if(idx >= _input_types.size() || idx < 0 || _input_types[idx].type_id() != v.type()) {
+    throw BadBind{};
+  }
+
+  AnyFunction anyf;
+
+  anyf._func = [v = std::move(v), idx, f = _func](Span<Any*> span) mutable {
+    std::vector<Any*> anys;
+    anys.reserve(span.size() + 1);
+
+    std::copy(span.begin(), span.begin() + idx, std::back_inserter(anys));
+    anys.push_back(&v);
+    std::copy(span.begin() + idx, span.end(), std::back_inserter(anys));
+
+    return f(anys);
+  };
+
+  anyf._input_types = _input_types;
+  anyf._output_types = _output_types;
+
+  anyf._input_types.erase(anyf._input_types.begin() + idx);
+
+  return anyf;
 }
 
 } // namespace anyf
