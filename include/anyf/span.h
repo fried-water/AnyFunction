@@ -1,5 +1,6 @@
 #pragma once
 
+#include <algorithm>
 #include <array>
 #include <optional>
 #include <vector>
@@ -11,13 +12,14 @@ class Span {
   const T* _begin = nullptr;
   const T* _end = nullptr;
 
+ public:
+
   using value_type = T;
   using reference_type = const T&;
   using pointer_type = const T*;
   using iterator_type = const T*;
   using const_iterator_type = const T*;
 
-public:
   Span() = default;
 
   Span(const T* begin, const T* end) : _begin(begin), _end(end) {}
@@ -52,6 +54,16 @@ public:
   int64_t ssize() const { return static_cast<int64_t>(size()); }
 
   bool empty() const { return _begin == _end; }
+
+  const T* data() const { return _begin; }
+
+  friend bool operator==(const Span<T>& lhs, const Span<T>& rhs) {
+    return std::equal(lhs.begin(), lhs.end(), rhs.begin(), rhs.end());
+  }
+
+  friend bool operator!=(const Span<T>& lhs, const Span<T>& rhs) {
+    return !(lhs == rhs);
+  }
 };
 
 } // namespace anyf
