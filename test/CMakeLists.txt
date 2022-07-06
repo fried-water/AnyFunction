@@ -9,6 +9,7 @@ add_executable(anyf_test
   any_test.cpp
   any_function_test.cpp
   executor_test.cpp
+  future_test.cpp
   graph_test.cpp
   static_graph_test.cpp
   stress_test.cpp

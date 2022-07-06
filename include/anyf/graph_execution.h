@@ -4,6 +4,8 @@
 #include "anyf/static_graph.h"
 #include "anyf/util.h"
 
+#include "anyf/future.h"
+
 #include <algorithm>
 #include <atomic>
 #include <memory>
@@ -11,16 +13,21 @@
 
 namespace anyf {
 
-inline bool decrement(std::atomic<int>& a) { return a.fetch_sub(1, std::memory_order_acq_rel) == 1; }
-inline bool ready(const std::atomic<int>& a) { return a.load(std::memory_order_acquire) == 0; }
-
 struct RefCleanup {
   std::atomic<int> ref_count;
   Term src;
   std::optional<Term> dst;
 };
 
-struct alignas(64) FunctionTask {
+struct ValueForward {
+  std::vector<Term> terms;
+  int copy_end;
+  int move_end;
+};
+
+struct FunctionTask {
+  AnyFunction function;
+
   std::atomic<int> ref_count;
 
   // Stores the values of the inputs for copy/move parameters
@@ -30,105 +37,112 @@ struct alignas(64) FunctionTask {
   // result of other tasks for refs
   std::vector<Any*> input_ptrs;
 
-  std::vector<Any> results;
-
-  // Information on where to send the outputs
-  std::vector<Edge> moves;
-  std::vector<Edge> copies;
-  std::vector<Edge> refs;
-
-  // Determines which references each node is respondible for cleaning up
-  // or perhaps forwarding when finished
+  // Determines which references this task is responsible
+  // for cleaning up or forwarding when finished
   std::vector<RefCleanup*> ref_cleanups;
 
-  // +1 so output and input task never run
-  FunctionTask(bool is_io, int num_inputs)
-      : ref_count(is_io ? num_inputs + 1 : num_inputs), input_vals(num_inputs), input_ptrs(num_inputs) {}
+  FunctionTask(AnyFunction function_)
+      : function(std::move(function_))
+      , ref_count(static_cast<int>(function.input_types().size()))
+      , input_vals(function.input_types().size())
+      , input_ptrs(function.input_types().size()) {}
 };
 
-inline void propogate_outputs(std::vector<std::unique_ptr<FunctionTask>>& tasks, std::vector<int>& tasks_to_run,
-                              int idx) {
-  FunctionTask& task = *tasks[idx];
-  std::vector<Any>& results = task.results;
+template <typename Executor>
+struct ExecutionCtx {
+  Executor* executor = nullptr;
 
-  const auto setup_input = [&](Term dst, Any* result) {
-    tasks[dst.node_id]->input_ptrs[dst.port] = result;
+  // Storage for the results of all the functions,
+  // First vector is the input values
+  std::vector<std::vector<Any>> results;
 
-    if(decrement(tasks[dst.node_id]->ref_count)) {
-      tasks_to_run.push_back(dst.node_id);
-    }
-  };
+  // Where to forward the results
+  std::vector<std::vector<ValueForward>> fwds;
 
-  for(const auto [src_port, dst] : task.copies) {
-    tasks[dst.node_id]->input_vals[dst.port] = results[src_port];
-    setup_input(dst, &tasks[dst.node_id]->input_vals[dst.port]);
-  }
+  std::vector<std::unique_ptr<FunctionTask>> tasks;
 
-  for(const auto [src_port, dst] : task.moves) {
-    tasks[dst.node_id]->input_vals[dst.port] = std::move(results[src_port]);
-    setup_input(dst, &tasks[dst.node_id]->input_vals[dst.port]);
-  }
+  std::vector<Promise> outputs;
+};
 
-  for(const auto [src_port, dst] : task.refs) {
-    setup_input(dst, &results[src_port]);
+template <typename Executor>
+void execute_task(std::shared_ptr<ExecutionCtx<Executor>>& ctx, int idx);
+
+template <typename Executor>
+void propagate_ref(std::shared_ptr<ExecutionCtx<Executor>>& ctx, Term dst, Any* value) {
+  ctx->tasks[dst.node_id - 1]->input_ptrs[dst.port] = value;
+
+  if(decrement(ctx->tasks[dst.node_id - 1]->ref_count)) {
+    (*ctx->executor)([ctx, i = dst.node_id - 1]() mutable { execute_task(ctx, i); });
   }
 }
 
 template <typename Executor>
-void execute_task(const FunctionGraph& g, std::vector<std::unique_ptr<FunctionTask>>& tasks, Executor& executor,
-                  int idx, int task_group_id) {
-  FunctionTask& task = *tasks[idx];
+void propagate_value(std::shared_ptr<ExecutionCtx<Executor>>& ctx, Term dst, Any value) {
+  if(dst.node_id - 1 == ctx->tasks.size()) {
+    std::move(ctx->outputs[dst.port]).send(*ctx->executor, std::move(value));
+  } else {
+    ctx->tasks[dst.node_id - 1]->input_vals[dst.port] = std::move(value);
+    propagate_ref(ctx, dst, &ctx->tasks[dst.node_id - 1]->input_vals[dst.port]);
+  }
+}
 
-  task.results = std::get<AnyFunction>(g[idx].func)(task.input_ptrs);
+template <typename Executor>
+void propogate_outputs(std::shared_ptr<ExecutionCtx<Executor>>& ctx, const ValueForward& fwd, Any& value) {
+  for(int i = 0; i < fwd.copy_end; i++) {
+    propagate_value(ctx, fwd.terms[i], value);
+  }
 
-  std::vector<int> tasks_to_run;
+  for(int i = fwd.copy_end; i < fwd.move_end; i++) {
+    propagate_value(ctx, fwd.terms[i], std::move(value));
+  }
 
-  propogate_outputs(tasks, tasks_to_run, idx);
+  for(int i = fwd.move_end; i < static_cast<int>(fwd.terms.size()); i++) {
+    propagate_ref(ctx, fwd.terms[i], &value);
+  }
+}
+
+template <typename Executor>
+void execute_task(std::shared_ptr<ExecutionCtx<Executor>>& ctx, int idx) {
+  ctx->results[idx + 1] = ctx->tasks[idx]->function(ctx->tasks[idx]->input_ptrs);
+
+  for(size_t i = 0; i < ctx->results[idx + 1].size(); i++) {
+    propogate_outputs(ctx, ctx->fwds[idx + 1][i], ctx->results[idx + 1][i]);
+  }
 
   // If we took anything by reference we potentially have to clean up the value
   // or move it to its final destination
-  for(RefCleanup* cleanup : task.ref_cleanups) {
+  for(RefCleanup* cleanup : ctx->tasks[idx]->ref_cleanups) {
     if(decrement(cleanup->ref_count)) {
-      const Term src = cleanup->src;
+      Any& src = ctx->results[cleanup->src.node_id][cleanup->src.port];
 
       if(cleanup->dst) {
-        const Term dst = *cleanup->dst;
-        FunctionTask& dst_task = *tasks[dst.node_id];
-
-        dst_task.input_vals[dst.port] = std::move(tasks[src.node_id]->results[src.port]);
-        dst_task.input_ptrs[dst.port] = &dst_task.input_vals[dst.port];
-
-        if(decrement(dst_task.ref_count)) {
-          tasks_to_run.push_back(dst.node_id);
-        }
+        propagate_value(ctx, *cleanup->dst, std::move(src));
       } else {
-        tasks[src.node_id]->results[src.port] = {};
+        src = {};
       }
 
       delete cleanup;
     }
   }
-
-  for(int task : tasks_to_run) {
-    executor.async(task_group_id,
-                   [&, task, task_group_id]() { execute_task(g, tasks, executor, task, task_group_id); });
-  }
 }
 
 template <typename Executor>
-std::vector<Any> execute_graph(const FunctionGraph& g, Executor&& executor, std::vector<Any> inputs) {
+std::vector<Future> execute_graph(const FunctionGraph& g, Executor& executor, std::vector<Future> inputs) {
   check(inputs.size() == input_types(g).size(), "expected {} inputs given {}", input_types(g).size(), inputs.size());
 
-  std::vector<std::unique_ptr<FunctionTask>> tasks;
+  auto ctx = std::make_shared<ExecutionCtx<Executor>>(ExecutionCtx<Executor>{&executor});
 
-  for(const auto& node : g) {
-    tasks.push_back(std::visit(
-      Overloaded{[](const std::vector<TypeProperties>& v) { return std::make_unique<FunctionTask>(true, v.size()); },
-                 [](const AnyFunction& a) { return std::make_unique<FunctionTask>(false, a.input_types().size()); }},
-      node.func));
+  ctx->results.resize(g.size() - 1);
+  ctx->fwds.resize(g.size() - 1);
+
+  ctx->results.front().resize(inputs.size());
+  ctx->fwds.front().resize(inputs.size());
+
+  for(int i = 1; i < static_cast<int>(g.size() - 1); i++) {
+    const AnyFunction& func = std::get<AnyFunction>(g[i].func);
+    ctx->tasks.push_back(std::make_unique<FunctionTask>(func));
+    ctx->fwds[i].resize(func.output_types().size());
   }
-
-  tasks.front()->results = std::move(inputs);
 
   // Connect outputs
   for(int i = 0; i < static_cast<int>(g.size()) - 1; i++) {
@@ -141,70 +155,91 @@ std::vector<Any> execute_graph(const FunctionGraph& g, Executor&& executor, std:
 
       const auto next_it = std::find_if(it + 1, outputs.end(), [&](Edge edge) { return src.port != edge.src_port; });
 
-      const int num_refs =
-        static_cast<int>(std::count_if(it, next_it, [&](Edge e) { return input_type(g, e.dst).is_cref(); }));
-      std::optional<Term> move_term;
+      ValueForward& fwd = ctx->fwds[src.node_id][src.port];
+      std::transform(it, next_it, std::back_inserter(fwd.terms), [](Edge e) { return e.dst; });
 
-      RefCleanup* cleanup = num_refs > 0 ? new RefCleanup{num_refs, src, std::nullopt} : nullptr;
+      const auto ref_begin = std::stable_partition(fwd.terms.begin(), fwd.terms.end(),
+        [&](Term t) { return !input_type(g, t).is_cref(); });
 
-      std::for_each(it, next_it, [&](Edge edge) {
-        if(input_type(g, edge.dst).is_cref()) {
-          tasks[edge.dst.node_id]->ref_cleanups.push_back(cleanup);
-          tasks[i]->refs.push_back(edge);
-        } else if(type.is_move_constructible() && !move_term) {
-          move_term = edge.dst;
-        } else {
-          tasks[i]->copies.push_back(edge);
+      fwd.move_end = static_cast<int>(std::distance(fwd.terms.begin(), ref_begin));
+      fwd.copy_end = (type.is_move_constructible() && fwd.move_end != 0) ? fwd.move_end - 1 : fwd.move_end;
+
+      if(ref_begin != fwd.terms.end()) {
+        RefCleanup* cleanup = new RefCleanup{
+          static_cast<int>(std::distance(ref_begin, fwd.terms.end())),
+          src,
+          (type.is_copy_constructible() || fwd.copy_end == fwd.move_end)
+            ? std::nullopt
+            : std::optional(fwd.terms[fwd.copy_end])};
+
+        std::for_each(ref_begin, fwd.terms.end(), [&](Term dst) {
+          ctx->tasks[dst.node_id - 1]->ref_cleanups.push_back(cleanup);
+        });
+
+        if(type.is_copy_constructible() && fwd.copy_end != fwd.move_end) {
+          fwd.copy_end++;
         }
-      });
-
-      if(num_refs > 0) {
-        cleanup->dst = type.is_copy_constructible() ? std::nullopt : move_term;
-
-        if(move_term && type.is_copy_constructible()) {
-          tasks[i]->copies.push_back({src.port, *move_term});
-        }
-      } else if(move_term) {
-        tasks[i]->moves.push_back({src.port, *move_term});
       }
 
       it = next_it;
     }
   }
 
-  std::vector<int> tasks_to_run;
+  // Create a promise/future for each output
+  const size_t num_outputs = output_types(g).size();
 
-  // Add 0 input tasks
-  for(int i = 1; i < g.size() - 1; i++) {
-    if(ready(tasks[i]->ref_count)) {
-      tasks_to_run.push_back(i);
+  std::vector<Future> results;
+  results.reserve(num_outputs);
+  ctx->outputs.reserve(num_outputs);
+
+  for(size_t i = 0; i < num_outputs; i++) {
+    auto [p, f] = make_promise_future();
+    ctx->outputs.push_back(std::move(p));
+    results.push_back(std::move(f));
+  }
+
+  // Determine 0 input tasks to launch immediately
+  for(size_t i = 1; i < g.size() - 1; i++) {
+    if(ctx->tasks[i - 1]->function.input_types().empty()) {
+      (*ctx->executor)([ctx, i = i - 1]() mutable { execute_task(ctx, i); });
     }
   }
 
-  // Propogate inputs
-  propogate_outputs(tasks, tasks_to_run, 0);
-
-  const auto task_group_id = executor.create_task_group();
-
-  // launch tasks
-  for(int task : tasks_to_run) {
-    executor.async(task_group_id,
-                   [&, task, task_group_id]() { execute_task(g, tasks, executor, task, task_group_id); });
+  for(int i = 0; i < inputs.size(); i++) {
+    std::move(inputs[i]).then(*ctx->executor, [ctx, i](Any value) mutable {
+      ctx->results[0][i] = std::move(value);
+      propogate_outputs(ctx, ctx->fwds[0][i], ctx->results[0][i]);
+    });
   }
 
-  executor.wait_for_task_group(task_group_id);
+  return results;
+}
 
-  check(tasks.back()->ref_count == 1, "Output ref count not 1: {}", tasks.back()->ref_count.load());
+template <typename Executor>
+std::vector<Any> execute_graph(const FunctionGraph& g, Executor&& executor, std::vector<Any> inputs) {
+  std::vector<Future> input_futures;
+  input_futures.reserve(inputs.size());
+  for(Any& any : inputs) {
+    input_futures.emplace_back(std::move(any));
+  }
 
-  return std::move(tasks.back()->input_vals);
+  std::vector<Future> result_futures = execute_graph(g, executor, std::move(input_futures));
+
+  std::vector<Any> results;
+  results.reserve(result_futures.size());
+  for(Future& f : result_futures) {
+    results.push_back(std::move(f).wait());
+  }
+
+  return results;
 }
 
 template <typename... Outputs, typename Executor, typename... Inputs>
 auto execute_graph(const StaticFunctionGraph<TypeList<Outputs...>, TypeList<std::decay_t<Inputs>...>>& g, Executor&& executor,
                    Inputs&&... inputs) {
   return apply_range<sizeof...(Outputs)>(
-    execute_graph(g, std::forward<Executor>(executor), make_vector<Any>(std::forward<Inputs>(inputs)...)),
-    [](auto&&... anys) { return tuple_or_value(any_cast<Outputs>(std::move(anys))...); });
+    execute_graph(g, std::move(executor), make_vector<Any>(std::forward<Inputs>(inputs)...)),
+      [](auto&&... anys) { return tuple_or_value(any_cast<Outputs>(std::move(anys))...); });
 }
 
 } // namespace anyf
