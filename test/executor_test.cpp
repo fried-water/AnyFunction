@@ -17,6 +17,7 @@
 using namespace anyf;
 
 namespace {
+
 std::vector<int> create_vector(int size) {
   std::mt19937 rng;
   std::uniform_int_distribution<> dist(0, 100'000);
@@ -137,4 +138,80 @@ BOOST_AUTO_TEST_CASE(test_graph_fwd) {
 
   BOOST_CHECK_EQUAL(0, result.copies);
   BOOST_CHECK_EQUAL(3, result.moves);
+}
+
+BOOST_AUTO_TEST_CASE(test_graph_unused_src) {
+  const SequentialExecutor executor;
+
+  auto [cg, inputs] = make_graph(make_types(TypeList<Sentinal>{}));
+
+  const auto g = std::move(cg).finalize({}).value();
+
+  auto [results, unused_srcs] = execute_graph(g, executor, make_vector<Future>(Any{Sentinal{}}));
+
+  BOOST_CHECK_EQUAL(0, results.size());
+  BOOST_REQUIRE_EQUAL(1, unused_srcs.size());
+  BOOST_CHECK_EQUAL(0, unused_srcs[0].first);
+
+  const Any res = std::move(unused_srcs[0].second).wait();
+
+  BOOST_CHECK_EQUAL(1, any_cast<Sentinal>(res).moves);
+  BOOST_CHECK_EQUAL(0, any_cast<Sentinal>(res).copies);
+}
+
+BOOST_AUTO_TEST_CASE(test_graph_unused_src_ref) {
+  const SequentialExecutor executor;
+
+  auto [cg, inputs] = make_graph(make_types(TypeList<const Sentinal&>{}));
+
+  cg.add(AnyFunction{[](const Sentinal&, Sentinal) {}}, std::array{inputs[0], inputs[0]});
+
+  const auto g = std::move(cg).finalize({}).value();
+
+  auto [results, unused_srcs] = execute_graph(g, executor, make_vector<Future>(Any{Sentinal{}}));
+
+  BOOST_CHECK_EQUAL(0, results.size());
+  BOOST_REQUIRE_EQUAL(1, unused_srcs.size());
+  BOOST_CHECK_EQUAL(0, unused_srcs[0].first);
+
+  const Any res = std::move(unused_srcs[0].second).wait();
+
+  BOOST_CHECK_EQUAL(1, any_cast<Sentinal>(res).moves);
+  BOOST_CHECK_EQUAL(0, any_cast<Sentinal>(res).copies);
+}
+
+BOOST_AUTO_TEST_CASE(test_graph_unused_src_copy) {
+  const SequentialExecutor executor;
+
+  auto [cg, inputs] = make_graph(make_types(TypeList<Sentinal>{}));
+
+  cg.add(AnyFunction{[](const Sentinal&, Sentinal) {}}, std::array{inputs[0], inputs[0]});
+
+  const auto g = std::move(cg).finalize({}).value();
+
+  auto [results, unused_srcs] = execute_graph(g, executor, make_vector<Future>(Any{Sentinal{}}));
+
+  BOOST_CHECK_EQUAL(0, results.size());
+  BOOST_REQUIRE_EQUAL(1, unused_srcs.size());
+  BOOST_CHECK_EQUAL(0, unused_srcs[0].first);
+
+  const Any res = std::move(unused_srcs[0].second).wait();
+
+  BOOST_CHECK_EQUAL(1, any_cast<Sentinal>(res).moves);
+  BOOST_CHECK_EQUAL(0, any_cast<Sentinal>(res).copies);
+}
+
+BOOST_AUTO_TEST_CASE(test_graph_unused_src_consumed) {
+  const SequentialExecutor executor;
+
+  auto [cg, inputs] = make_graph(make_types(TypeList<Sentinal>{}));
+
+  cg.add(AnyFunction{[](Sentinal) {}}, inputs);
+
+  const auto g = std::move(cg).finalize({}).value();
+
+  auto [results, unused_srcs] = execute_graph(g, executor, make_vector<Future>(Any{Sentinal{}}));
+
+  BOOST_CHECK_EQUAL(0, results.size());
+  BOOST_CHECK_EQUAL(0, unused_srcs.size());
 }

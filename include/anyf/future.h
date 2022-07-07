@@ -90,6 +90,8 @@ class Future {
     return *this;
   }
 
+  bool ready() const { return _block->value_ready.load(std::memory_order_relaxed) == 0; }
+
   Any wait() && {
     Any result;
 
@@ -103,7 +105,7 @@ class Future {
       } else {
         auto& [cv, mutex] = *std::get<2>(_block->continuation);
         std::unique_lock lk(mutex);
-        cv.wait(lk, [&]() { return ready(_block->value_ready); });
+        cv.wait(lk, [&]() { return anyf::ready(_block->value_ready); });
         result = std::move(_block->value);
       }      
     }

@@ -127,8 +127,11 @@ void execute_task(std::shared_ptr<ExecutionCtx<Executor>>& ctx, int idx) {
 }
 
 template <typename Executor>
-std::vector<Future> execute_graph(const FunctionGraph& g, Executor& executor, std::vector<Future> inputs) {
+std::pair<std::vector<Future>, std::vector<std::pair<int, Future>>>
+execute_graph(const FunctionGraph& g, Executor& executor, std::vector<Future> inputs) {
   check(inputs.size() == input_types(g).size(), "expected {} inputs given {}", input_types(g).size(), inputs.size());
+
+  const size_t num_outputs = output_types(g).size();
 
   auto ctx = std::make_shared<ExecutionCtx<Executor>>(ExecutionCtx<Executor>{&executor});
 
@@ -143,6 +146,8 @@ std::vector<Future> execute_graph(const FunctionGraph& g, Executor& executor, st
     ctx->tasks.push_back(std::make_unique<FunctionTask>(func));
     ctx->fwds[i].resize(func.output_types().size());
   }
+
+  std::vector<int> unconsumed_srcs;
 
   // Connect outputs
   for(int i = 0; i < static_cast<int>(g.size()) - 1; i++) {
@@ -162,7 +167,7 @@ std::vector<Future> execute_graph(const FunctionGraph& g, Executor& executor, st
         [&](Term t) { return !input_type(g, t).is_cref(); });
 
       fwd.move_end = static_cast<int>(std::distance(fwd.terms.begin(), ref_begin));
-      fwd.copy_end = (type.is_move_constructible() && fwd.move_end != 0) ? fwd.move_end - 1 : fwd.move_end;
+      fwd.copy_end = type.is_cref() ? fwd.move_end : std::max(0, fwd.move_end - 1);
 
       if(ref_begin != fwd.terms.end()) {
         RefCleanup* cleanup = new RefCleanup{
@@ -179,23 +184,48 @@ std::vector<Future> execute_graph(const FunctionGraph& g, Executor& executor, st
         if(type.is_copy_constructible() && fwd.copy_end != fwd.move_end) {
           fwd.copy_end++;
         }
+
+        if(src.node_id == 0 && !cleanup->dst) {
+          cleanup->dst = Term{static_cast<int>(g.size() - 1), static_cast<int>(num_outputs + unconsumed_srcs.size())};
+          unconsumed_srcs.push_back(src.port);
+        }
       }
 
       it = next_it;
     }
   }
 
-  // Create a promise/future for each output
-  const size_t num_outputs = output_types(g).size();
+  // Find unused srcs
+  for(int i = 0; i < ctx->fwds[0].size(); i++) {
+    ValueForward& fwd = ctx->fwds[0][i];
+    if(fwd.terms.empty()) {
+      fwd.terms.push_back(Term{static_cast<int>(g.size() - 1), static_cast<int>(num_outputs + unconsumed_srcs.size())});
+      fwd.move_end++;
+      unconsumed_srcs.push_back(i);
+    }
+  }
 
+  // Create a promise/future for each output
   std::vector<Future> results;
+
   results.reserve(num_outputs);
-  ctx->outputs.reserve(num_outputs);
+  ctx->outputs.reserve(num_outputs + unconsumed_srcs.size());
 
   for(size_t i = 0; i < num_outputs; i++) {
     auto [p, f] = make_promise_future();
     ctx->outputs.push_back(std::move(p));
     results.push_back(std::move(f));
+  }
+
+  // Create a promise/future for each unconsumed_src
+  std::vector<std::pair<int, Future>> unconsumed_src_futures;
+
+  unconsumed_src_futures.reserve(unconsumed_srcs.size());
+
+  for(int unconsumed_src : unconsumed_srcs) {
+    auto [p, f] = make_promise_future();
+    ctx->outputs.push_back(std::move(p));
+    unconsumed_src_futures.emplace_back(unconsumed_src, std::move(f));
   }
 
   // Determine 0 input tasks to launch immediately
@@ -212,7 +242,7 @@ std::vector<Future> execute_graph(const FunctionGraph& g, Executor& executor, st
     });
   }
 
-  return results;
+  return std::pair(std::move(results), std::move(unconsumed_src_futures));
 }
 
 template <typename Executor>
@@ -223,7 +253,7 @@ std::vector<Any> execute_graph(const FunctionGraph& g, Executor&& executor, std:
     input_futures.emplace_back(std::move(any));
   }
 
-  std::vector<Future> result_futures = execute_graph(g, executor, std::move(input_futures));
+  std::vector<Future> result_futures = execute_graph(g, executor, std::move(input_futures)).first;
 
   std::vector<Any> results;
   results.reserve(result_futures.size());
