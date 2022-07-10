@@ -83,6 +83,13 @@ void execute_graph_with_threads(Graph g) {
   }
 }
 
+template<typename Executor, typename... Ts>
+std::vector<Future> make_futures(Executor& executor, Ts... ts) {
+  std::vector<Future> futures;
+  (futures.emplace_back(executor, std::move(ts)), ...);
+  return futures;
+}
+
 } // namespace
 
 BOOST_AUTO_TEST_CASE(example_graph_tbb, *boost::unit_test::disabled()) {
@@ -147,7 +154,7 @@ BOOST_AUTO_TEST_CASE(test_graph_unused_src) {
 
   const auto g = std::move(cg).finalize({}).value();
 
-  auto [results, unused_srcs] = execute_graph(g, executor, make_vector<Future>(Any{Sentinal{}}));
+  auto [results, unused_srcs] = execute_graph(g, executor, make_futures(executor, Sentinal{}));
 
   BOOST_CHECK_EQUAL(0, results.size());
   BOOST_REQUIRE_EQUAL(1, unused_srcs.size());
@@ -168,7 +175,7 @@ BOOST_AUTO_TEST_CASE(test_graph_unused_src_ref) {
 
   const auto g = std::move(cg).finalize({}).value();
 
-  auto [results, unused_srcs] = execute_graph(g, executor, make_vector<Future>(Any{Sentinal{}}));
+  auto [results, unused_srcs] = execute_graph(g, executor, make_futures(executor, Sentinal{}));
 
   BOOST_CHECK_EQUAL(0, results.size());
   BOOST_REQUIRE_EQUAL(1, unused_srcs.size());
@@ -189,7 +196,7 @@ BOOST_AUTO_TEST_CASE(test_graph_unused_src_copy) {
 
   const auto g = std::move(cg).finalize({}).value();
 
-  auto [results, unused_srcs] = execute_graph(g, executor, make_vector<Future>(Any{Sentinal{}}));
+  auto [results, unused_srcs] = execute_graph(g, executor, make_futures(executor, Sentinal{}));
 
   BOOST_CHECK_EQUAL(0, results.size());
   BOOST_REQUIRE_EQUAL(1, unused_srcs.size());
@@ -210,7 +217,7 @@ BOOST_AUTO_TEST_CASE(test_graph_unused_src_consumed) {
 
   const auto g = std::move(cg).finalize({}).value();
 
-  auto [results, unused_srcs] = execute_graph(g, executor, make_vector<Future>(Any{Sentinal{}}));
+  auto [results, unused_srcs] = execute_graph(g, executor, make_futures(executor, Sentinal{}));
 
   BOOST_CHECK_EQUAL(0, results.size());
   BOOST_CHECK_EQUAL(0, unused_srcs.size());

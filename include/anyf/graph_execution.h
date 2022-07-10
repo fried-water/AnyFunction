@@ -79,7 +79,7 @@ void propagate_ref(std::shared_ptr<ExecutionCtx<Executor>>& ctx, Term dst, Any* 
 template <typename Executor>
 void propagate_value(std::shared_ptr<ExecutionCtx<Executor>>& ctx, Term dst, Any value) {
   if(dst.node_id - 1 == ctx->tasks.size()) {
-    std::move(ctx->outputs[dst.port]).send(*ctx->executor, std::move(value));
+    std::move(ctx->outputs[dst.port]).send(std::move(value));
   } else {
     ctx->tasks[dst.node_id - 1]->input_vals[dst.port] = std::move(value);
     propagate_ref(ctx, dst, &ctx->tasks[dst.node_id - 1]->input_vals[dst.port]);
@@ -212,7 +212,7 @@ execute_graph(const FunctionGraph& g, Executor& executor, std::vector<Future> in
   ctx->outputs.reserve(num_outputs + unconsumed_srcs.size());
 
   for(size_t i = 0; i < num_outputs; i++) {
-    auto [p, f] = make_promise_future();
+    auto [p, f] = make_promise_future(*ctx->executor);
     ctx->outputs.push_back(std::move(p));
     results.push_back(std::move(f));
   }
@@ -223,7 +223,7 @@ execute_graph(const FunctionGraph& g, Executor& executor, std::vector<Future> in
   unconsumed_src_futures.reserve(unconsumed_srcs.size());
 
   for(int unconsumed_src : unconsumed_srcs) {
-    auto [p, f] = make_promise_future();
+    auto [p, f] = make_promise_future(*ctx->executor);
     ctx->outputs.push_back(std::move(p));
     unconsumed_src_futures.emplace_back(unconsumed_src, std::move(f));
   }
@@ -236,7 +236,7 @@ execute_graph(const FunctionGraph& g, Executor& executor, std::vector<Future> in
   }
 
   for(int i = 0; i < inputs.size(); i++) {
-    std::move(inputs[i]).then(*ctx->executor, [ctx, i](Any value) mutable {
+    std::move(inputs[i]).then([ctx, i](Any value) mutable {
       ctx->results[0][i] = std::move(value);
       propogate_outputs(ctx, ctx->fwds[0][i], ctx->results[0][i]);
     });
@@ -250,7 +250,7 @@ std::vector<Any> execute_graph(const FunctionGraph& g, Executor&& executor, std:
   std::vector<Future> input_futures;
   input_futures.reserve(inputs.size());
   for(Any& any : inputs) {
-    input_futures.emplace_back(std::move(any));
+    input_futures.emplace_back(executor, std::move(any));
   }
 
   std::vector<Future> result_futures = execute_graph(g, executor, std::move(input_futures)).first;

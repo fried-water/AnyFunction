@@ -11,139 +11,165 @@
 namespace anyf {
 
 inline bool decrement(std::atomic<int>& a) { return a.fetch_sub(1, std::memory_order_acq_rel) == 1; }
-inline bool increment(std::atomic<int>& a) { return a.fetch_add(1, std::memory_order_acq_rel) == 0; }
 inline bool ready(const std::atomic<int>& a) { return a.load(std::memory_order_acquire) == 0; }
-
-struct NullExecutor {
-  template<typename F> void operator()(F&&) const {}
-};
 
 struct SharedBlock {
   Any value;
-  std::variant<
-    std::monostate,
-    std::function<void(Any)>,
-    std::unique_ptr<std::pair<std::condition_variable, std::mutex>>> continuation;
+  std::mutex mutex;
+  std::condition_variable cv;
+  std::optional<std::function<void(Any)>> continuation;
+  std::function<void(std::function<void()>)> executor;
   std::atomic<int> value_ready;
-  std::atomic<int> ref_count;
 
-  SharedBlock() : value_ready(1), ref_count(2) {}
-  SharedBlock(Any&& value) : value(std::move(value)), value_ready(0), ref_count(1) {}
+  SharedBlock(Any value, std::function<void(std::function<void()>)> executor, int ref_count = 0)
+    : value(std::move(value))
+    , executor(std::move(executor))
+    , value_ready(ref_count) {}
+
+  template<typename Executor>
+  SharedBlock(Any value, Executor& executor, int ref_count = 0)
+    : SharedBlock(std::move(value)
+      , [e_ptr = &executor, this](std::function<void()> f) { (*e_ptr)(std::move(f)); }
+      , ref_count) {}
+
+  template<typename Executor>
+  SharedBlock(Executor& executor) : SharedBlock(Any{}, executor, 1) {}
 };
 
 class Future;
+class Promise;
+
+template<typename Executor>
+std::pair<Promise, Future> make_promise_future(Executor&);
 
 class Promise {
  public:
   Promise() = default;
-  ~Promise() { if(_block) std::move(*this).send(NullExecutor{}, Any{}); }
+  ~Promise() { if(_block) std::move(*this).send(Any{}); }
 
   Promise(const Promise&) = delete;
   Promise& operator=(const Promise&) = delete;
 
   Promise(Promise&& p) { *this = std::move(p); }
   Promise& operator=(Promise&& p) {
-    _block = std::exchange(p._block, nullptr);
+    this->~Promise();
+    _block = std::move(p._block);
     return *this;
   }
 
-  template<typename Executor>
-  void send(Executor&& e, Any&& value) && {
+  void send(Any&& value) && {
     _block->value = std::move(value);
 
+    std::unique_lock lk(_block->mutex);
+
     if(decrement(_block->value_ready)) {
-      if(_block->continuation.index() == 1) {
-        e([f = std::move(std::get<1>(_block->continuation)), value = std::move(_block->value)]() mutable {
+      lk.unlock();
+      _block->cv.notify_one();
+
+      if(_block->continuation) {
+        _block->executor([f = std::move(*_block->continuation), value = std::move(_block->value)]() mutable {
           f(std::move(value));
         });
-      } else if(_block->continuation.index() == 2) {
-        auto& [cv, mutex] = *std::get<2>(_block->continuation);
-        std::scoped_lock lk(mutex);
-        cv.notify_one();
       }
     }
 
-    if(decrement(_block->ref_count)) delete _block;
     _block = nullptr;
   }
 
  private:
-  SharedBlock* _block = nullptr;
+  std::shared_ptr<SharedBlock> _block;
 
-  friend std::pair<Promise, Future> make_promise_future();
-  Promise(SharedBlock* block) : _block(block) {}
+  template<typename Executor>
+  friend std::pair<Promise, Future> make_promise_future(Executor&);
+
+  Promise(std::shared_ptr<SharedBlock> block) : _block(std::move(block)) {}
 };
 
 class Future {
  public:
   Future() = default;
-  explicit Future(Any&& value) : _block(new SharedBlock(std::move(value))) {}
 
-  ~Future() { if(_block) std::move(*this).then(NullExecutor{}, [](Any){}); }
+  template<typename Executor>
+  explicit Future(Executor& executor, Any value)
+      : _block(std::make_shared<SharedBlock>(std::move(value), executor)) {}
 
   Future(const Future&) = delete;
   Future& operator=(const Future&) = delete;
 
   Future(Future&& f) { *this = std::move(f); }
   Future& operator=(Future&& f) {
-    _block = std::exchange(f._block, nullptr);
+    _block = std::move(f._block);
     return *this;
   }
 
   bool ready() const { return _block->value_ready.load(std::memory_order_relaxed) == 0; }
 
   Any wait() && {
-    Any result;
-
-    if(increment(_block->value_ready)) {
-      result = std::move(_block->value);
-    } else {
-      _block->continuation = std::make_unique<std::pair<std::condition_variable, std::mutex>>();
-
-      if(decrement(_block->value_ready)) {
-        result = std::move(_block->value);
-      } else {
-        auto& [cv, mutex] = *std::get<2>(_block->continuation);
-        std::unique_lock lk(mutex);
-        cv.wait(lk, [&]() { return anyf::ready(_block->value_ready); });
-        result = std::move(_block->value);
-      }      
-    }
-
-    if(decrement(_block->ref_count)) delete _block;
+    std::unique_lock lk(_block->mutex);
+    _block->cv.wait(lk, [&]() { return ready(); });
+    Any result = std::move(_block->value);
     _block = nullptr;
     return result;
   }
 
-  template<typename F, typename Executor>
-  void then(Executor&& e, F&& f) && {
-    if(increment(_block->value_ready)) {
-      e([f = std::forward<F>(f), value = std::move(_block->value)]() mutable {
+  template<typename F, typename = std::enable_if_t<std::is_same_v<void, std::invoke_result_t<F, Any>>>>
+  void then(F&& f) && {
+    if(_block->value_ready.fetch_add(1, std::memory_order_acquire) == 0) {
+      _block->executor([f = std::forward<F>(f), value = std::move(_block->value)]() mutable {
         f(std::move(value));
       });
     } else {
       _block->continuation = std::forward<F>(f);
 
       if(decrement(_block->value_ready)) {
-        e([f = std::move(std::get<1>(_block->continuation)), value = std::move(_block->value)]() mutable {
+        _block->executor([f = std::move(*_block->continuation), value = std::move(_block->value)]() mutable {
           f(std::move(value));
         });
       }
     }
 
-    if(decrement(_block->ref_count)) delete _block;
     _block = nullptr;
   }
 
- private:
-  SharedBlock* _block;
+  template<typename F, typename = std::enable_if_t<!std::is_same_v<void, std::invoke_result_t<F, Any>>>>
+  Future then(F&& f) && {
+    auto [p, new_future] = make_promise_future(_block->executor);
 
-  friend std::pair<Promise, Future> make_promise_future();
-  Future(SharedBlock* block) : _block(std::move(block)) {}
+    // std::function requires copyable callables...
+    auto shared_p = std::make_shared<Promise>(std::move(p));
+
+    if(_block->value_ready.fetch_add(1, std::memory_order_acquire) == 0) {
+      _block->executor([f = std::forward<F>(f), value = std::move(_block->value), p = std::move(shared_p)]() mutable {
+        std::move(*p).send(std::forward<F>(f)(std::move(value)));
+      });
+    } else {
+      _block->continuation = [f = std::forward<F>(f), p = std::move(shared_p)](Any value) mutable {
+        std::move(*p).send(std::forward<F>(f)(std::move(value)));
+      };
+
+      if(decrement(_block->value_ready)) {
+        _block->executor([f = std::move(*_block->continuation), value = std::move(_block->value)]() mutable {
+          f(std::move(value));
+        });
+      }
+    }
+
+    _block = nullptr;
+    return std::move(new_future);
+  }
+
+ private:
+  std::shared_ptr<SharedBlock> _block;
+
+  template<typename Executor>
+  friend std::pair<Promise, Future> make_promise_future(Executor&);
+
+  Future(std::shared_ptr<SharedBlock> block) : _block(std::move(block)) {}
 };
 
-inline std::pair<Promise, Future> make_promise_future() {
-  auto block = new SharedBlock();
+template<typename Executor>
+std::pair<Promise, Future> make_promise_future(Executor& executor) {
+  auto block = std::make_shared<SharedBlock>(executor);
   return {Promise(block), Future(block)};
 }
 
