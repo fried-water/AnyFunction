@@ -2,6 +2,7 @@
 
 #include "anyf/executor/sequential_executor.h"
 
+#include <random>
 #include <thread>
 
 #include <boost/test/unit_test.hpp>
@@ -114,45 +115,41 @@ BOOST_AUTO_TEST_CASE(future_send_then_then_wait) {
   BOOST_CHECK_EQUAL(3, any_cast<int>(result));
 }
 
-BOOST_AUTO_TEST_CASE(future_wait_stress) {
+BOOST_AUTO_TEST_CASE(future_stress) {
   constexpr int count = 1000;
 
   std::atomic<int> calls = 0;
 
-  std::vector<std::thread> threads;
+  std::vector<std::function<void()>> functions;
 
-  for(int i = 0; i < count; i++) {
+  for(int i = 0; i < count/2; i++) {
     auto [p, f] = make_promise_future(executor);
-    threads.emplace_back([p = std::move(p)]() mutable { std::move(p).send(1); });
-    threads.emplace_back([f = std::move(f), &calls]() mutable { 
-      BOOST_CHECK_EQUAL(1, any_cast<int>(std::move(f).wait()));
+    functions.emplace_back([p = std::make_shared<Promise>(std::move(p))]() mutable { std::move(*p).send(1); });
+    functions.emplace_back([f = std::make_shared<Future>(std::move(f)), &calls]() mutable { 
+      BOOST_CHECK_EQUAL(1, any_cast<int>(std::move(*f).wait()));
       calls++;
     });
   }
 
-  for(auto& thread : threads) {
-    thread.join();
-  }
-
-  BOOST_CHECK_EQUAL(count, calls.load());
-}
-
-BOOST_AUTO_TEST_CASE(future_then_stress) {
-  constexpr int count = 1000;
-
-  std::atomic<int> calls = 0;
-
-  std::vector<std::thread> threads;
-
-  for(int i = 0; i < count; i++) {
+  for(int i = 0; i < count/2; i++) {
     auto [p, f] = make_promise_future(executor);
-    threads.emplace_back([p = std::move(p)]() mutable { std::move(p).send(1); });
-    threads.emplace_back([f = std::move(f), &calls]() mutable {
-      std::move(f).then([&](Any v) {
+    functions.emplace_back([p = std::make_shared<Promise>(std::move(p))]() mutable { std::move(*p).send(1); });
+    functions.emplace_back([f = std::make_shared<Future>(std::move(f)), &calls]() mutable {
+      std::move(*f).then([&](Any v) {
         BOOST_CHECK_EQUAL(1, any_cast<int>(v));
         calls++;
       });
     });
+  }
+
+  std::random_device rd;
+  std::mt19937 rng(rd());
+
+  std::shuffle(functions.begin(), functions.end(), rng);
+
+  std::vector<std::thread> threads;
+  for(auto& f : functions) {
+    threads.emplace_back(std::move(f));
   }
 
   for(auto& thread : threads) {

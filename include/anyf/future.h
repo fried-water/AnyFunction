@@ -103,6 +103,7 @@ class Future {
   }
 
   bool ready() const { return _block->value_ready.load(std::memory_order_relaxed) == 0; }
+  auto executor() const { return _block->executor; }
 
   Any wait() && {
     std::unique_lock lk(_block->mutex);
