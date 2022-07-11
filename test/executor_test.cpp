@@ -83,13 +83,6 @@ void execute_graph_with_threads(Graph g) {
   }
 }
 
-template<typename Executor, typename... Ts>
-std::vector<Future> make_futures(Executor& executor, Ts... ts) {
-  std::vector<Future> futures;
-  (futures.emplace_back(executor, std::move(ts)), ...);
-  return futures;
-}
-
 } // namespace
 
 BOOST_AUTO_TEST_CASE(example_graph_tbb, *boost::unit_test::disabled()) {
@@ -147,78 +140,88 @@ BOOST_AUTO_TEST_CASE(test_graph_fwd) {
   BOOST_CHECK_EQUAL(3, result.moves);
 }
 
-BOOST_AUTO_TEST_CASE(test_graph_unused_src) {
+BOOST_AUTO_TEST_CASE(test_graph_forwarded_ref) {
   const SequentialExecutor executor;
 
-  auto [cg, inputs] = make_graph(make_types(TypeList<Sentinal>{}));
-
-  const auto g = std::move(cg).finalize({}).value();
-
-  auto [results, unused_srcs] = execute_graph(g, executor, make_futures(executor, Sentinal{}));
-
-  BOOST_CHECK_EQUAL(0, results.size());
-  BOOST_REQUIRE_EQUAL(1, unused_srcs.size());
-  BOOST_CHECK_EQUAL(0, unused_srcs[0].first);
-
-  const Any res = std::move(unused_srcs[0].second).wait();
-
-  BOOST_CHECK_EQUAL(1, any_cast<Sentinal>(res).moves);
-  BOOST_CHECK_EQUAL(0, any_cast<Sentinal>(res).copies);
-}
-
-BOOST_AUTO_TEST_CASE(test_graph_unused_src_ref) {
-  const SequentialExecutor executor;
-
-  auto [cg, inputs] = make_graph(make_types(TypeList<const Sentinal&>{}));
+  auto [cg, inputs] = make_graph(make_types(TypeList<const Sentinal&, const Sentinal&>{}));
 
   cg.add(AnyFunction{[](const Sentinal&, Sentinal) {}}, std::array{inputs[0], inputs[0]});
 
   const auto g = std::move(cg).finalize({}).value();
 
-  auto [results, unused_srcs] = execute_graph(g, executor, make_futures(executor, Sentinal{}));
+  auto [b1, post_future1] = borrow(Future(executor, Sentinal{}));
+  auto [b2, post_future2] = borrow(Future(executor, Sentinal{}));
+  auto results = execute_graph(g, executor, {}, {std::move(b1), std::move(b2)});
+  const Sentinal input1 = any_cast<Sentinal>(std::move(post_future1).wait());
+  const Sentinal input2 = any_cast<Sentinal>(std::move(post_future2).wait());
 
   BOOST_CHECK_EQUAL(0, results.size());
-  BOOST_REQUIRE_EQUAL(1, unused_srcs.size());
-  BOOST_CHECK_EQUAL(0, unused_srcs[0].first);
-
-  const Any res = std::move(unused_srcs[0].second).wait();
-
-  BOOST_CHECK_EQUAL(1, any_cast<Sentinal>(res).moves);
-  BOOST_CHECK_EQUAL(0, any_cast<Sentinal>(res).copies);
+  BOOST_CHECK_EQUAL(0, input1.copies);
+  BOOST_CHECK_EQUAL(2, input1.moves);
+  BOOST_CHECK_EQUAL(0, input2.copies);
+  BOOST_CHECK_EQUAL(2, input2.moves);
 }
 
-BOOST_AUTO_TEST_CASE(test_graph_unused_src_copy) {
-  const SequentialExecutor executor;
+BOOST_AUTO_TEST_CASE(test_graph_timing, *boost::unit_test::disabled()) {
+  const size_t COUNT = 5;
 
-  auto [cg, inputs] = make_graph(make_types(TypeList<Sentinal>{}));
+  const std::vector<TypeProperties> input_types(COUNT, TypeProperties(Type<const std::string&>{}));
+  auto [cg, input_terms] = make_graph(input_types);
 
-  cg.add(AnyFunction{[](const Sentinal&, Sentinal) {}}, std::array{inputs[0], inputs[0]});
+  std::vector<Term> outputs;
 
-  const auto g = std::move(cg).finalize({}).value();
+  for(size_t i = 0; i < COUNT; i++) {
+    outputs.push_back(cg.add(AnyFunction{[=](const std::string& s) {
+      std::this_thread::sleep_for(std::chrono::duration<int, std::milli>(i));
+      return s + " out";
+    }}, std::array{input_terms[i]}).value()[0]);
+  }
 
-  auto [results, unused_srcs] = execute_graph(g, executor, make_futures(executor, Sentinal{}));
+  const auto g = std::move(cg).finalize(outputs).value();
 
-  BOOST_CHECK_EQUAL(0, results.size());
-  BOOST_REQUIRE_EQUAL(1, unused_srcs.size());
-  BOOST_CHECK_EQUAL(0, unused_srcs[0].first);
+  TaskExecutor executor;
 
-  const Any res = std::move(unused_srcs[0].second).wait();
+  std::vector<Promise> promises;
+  std::vector<BorrowedFuture> inputs;
+  std::vector<Future> input_futures;
 
-  BOOST_CHECK_EQUAL(1, any_cast<Sentinal>(res).moves);
-  BOOST_CHECK_EQUAL(0, any_cast<Sentinal>(res).copies);
-}
+  for(size_t i = 0; i < COUNT; i++) {
+    auto [p, f] = make_promise_future(executor);
+    auto [b, bf] = borrow(std::move(f));
+    promises.push_back(std::move(p));
+    inputs.push_back(std::move(b));
+    input_futures.push_back(std::move(bf));
+  }
 
-BOOST_AUTO_TEST_CASE(test_graph_unused_src_consumed) {
-  const SequentialExecutor executor;
+  auto futures = execute_graph(g, executor, {}, std::move(inputs));
 
-  auto [cg, inputs] = make_graph(make_types(TypeList<Sentinal>{}));
+  futures.insert(futures.end(), 
+    std::make_move_iterator(input_futures.begin()),
+    std::make_move_iterator(input_futures.end()));
 
-  cg.add(AnyFunction{[](Sentinal) {}}, inputs);
+  std::mutex m;
+  std::vector<std::pair<std::string, std::chrono::time_point<std::chrono::steady_clock>>> ordered_results;
 
-  const auto g = std::move(cg).finalize({}).value();
+  std::vector<std::thread> threads;
+  for(Future& f : futures) {
+    threads.emplace_back([&]() {
+      std::string str = any_cast<std::string>(std::move(f).wait());
+      std::lock_guard lk(m);
+      ordered_results.emplace_back(std::move(str), std::chrono::steady_clock::now());
+    });
+  }
 
-  auto [results, unused_srcs] = execute_graph(g, executor, make_futures(executor, Sentinal{}));
+  auto start = std::chrono::steady_clock::now();
 
-  BOOST_CHECK_EQUAL(0, results.size());
-  BOOST_CHECK_EQUAL(0, unused_srcs.size());
+  for(size_t i = 0; i < COUNT; i++) {
+    std::move(promises[i]).send(std::string(1, char('A' + i)));
+  }
+
+  for(std::thread& t : threads) {
+    t.join();
+  }
+
+  for(const auto& [string, time] : ordered_results) {
+    fmt::print("({:05} ms) {}\n", std::chrono::duration_cast<std::chrono::microseconds>(time - start).count(), string);
+  }
 }

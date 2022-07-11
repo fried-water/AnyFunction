@@ -86,7 +86,6 @@ inline std::pair<BorrowedFuture, Future> borrow(Future f) {
   auto executor = f.executor();
   auto [new_p, new_f] = make_promise_future(executor);
 
-
   auto block = std::make_shared<BorrowedSharedBlock>(std::move(new_p), executor);
 
   std::move(f).then([b = block](Any value) mutable {

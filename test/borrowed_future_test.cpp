@@ -131,6 +131,7 @@ BOOST_AUTO_TEST_CASE(borrowed_future_stress) {
             BOOST_CHECK_EQUAL(1, any_cast<int>(v));
             calls++;
           });
+          b = {};
         });
       }
     }

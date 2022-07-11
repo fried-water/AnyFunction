@@ -5,6 +5,7 @@
 #include "anyf/util.h"
 
 #include "anyf/future.h"
+#include "anyf/borrowed_future.h"
 
 #include <algorithm>
 #include <atomic>
@@ -29,6 +30,9 @@ struct FunctionTask {
   AnyFunction function;
 
   std::atomic<int> ref_count;
+
+  // Store a reference to the borrowed inputs to ensure they are kept alive
+  std::vector<BorrowedFuture> borrowed_inputs;
 
   // Stores the values of the inputs for copy/move parameters
   std::vector<Any> input_vals;
@@ -105,6 +109,9 @@ template <typename Executor>
 void execute_task(std::shared_ptr<ExecutionCtx<Executor>>& ctx, int idx) {
   ctx->results[idx + 1] = ctx->tasks[idx]->function(ctx->tasks[idx]->input_ptrs);
 
+  // Drop reference to all borrowed inputs so they can be forwarded asap
+  ctx->tasks[idx]->borrowed_inputs.clear();
+
   for(size_t i = 0; i < ctx->results[idx + 1].size(); i++) {
     propogate_outputs(ctx, ctx->fwds[idx + 1][i], ctx->results[idx + 1][i]);
   }
@@ -127,10 +134,16 @@ void execute_task(std::shared_ptr<ExecutionCtx<Executor>>& ctx, int idx) {
 }
 
 template <typename Executor>
-std::pair<std::vector<Future>, std::vector<std::pair<int, Future>>>
-execute_graph(const FunctionGraph& g, Executor& executor, std::vector<Future> inputs) {
-  check(inputs.size() == input_types(g).size(), "expected {} inputs given {}", input_types(g).size(), inputs.size());
+std::vector<Future> execute_graph(
+  const FunctionGraph& g,
+  Executor& executor,
+  std::vector<Future> inputs,
+  std::vector<BorrowedFuture> borrowed_inputs)
+{
+  check(inputs.size() + borrowed_inputs.size() == input_types(g).size(), 
+    "expected {} inputs given {} + {}", input_types(g).size(), inputs.size(), borrowed_inputs.size());
 
+  const size_t num_inputs = input_types(g).size();
   const size_t num_outputs = output_types(g).size();
 
   auto ctx = std::make_shared<ExecutionCtx<Executor>>(ExecutionCtx<Executor>{&executor});
@@ -138,16 +151,14 @@ execute_graph(const FunctionGraph& g, Executor& executor, std::vector<Future> in
   ctx->results.resize(g.size() - 1);
   ctx->fwds.resize(g.size() - 1);
 
-  ctx->results.front().resize(inputs.size());
-  ctx->fwds.front().resize(inputs.size());
+  ctx->results.front().resize(num_inputs);
+  ctx->fwds.front().resize(num_inputs);
 
   for(int i = 1; i < static_cast<int>(g.size() - 1); i++) {
     const AnyFunction& func = std::get<AnyFunction>(g[i].func);
     ctx->tasks.push_back(std::make_unique<FunctionTask>(func));
     ctx->fwds[i].resize(func.output_types().size());
   }
-
-  std::vector<int> unconsumed_srcs;
 
   // Connect outputs
   for(int i = 0; i < static_cast<int>(g.size()) - 1; i++) {
@@ -184,24 +195,9 @@ execute_graph(const FunctionGraph& g, Executor& executor, std::vector<Future> in
         if(type.is_copy_constructible() && fwd.copy_end != fwd.move_end) {
           fwd.copy_end++;
         }
-
-        if(src.node_id == 0 && !cleanup->dst) {
-          cleanup->dst = Term{static_cast<int>(g.size() - 1), static_cast<int>(num_outputs + unconsumed_srcs.size())};
-          unconsumed_srcs.push_back(src.port);
-        }
       }
 
       it = next_it;
-    }
-  }
-
-  // Find unused srcs
-  for(int i = 0; i < ctx->fwds[0].size(); i++) {
-    ValueForward& fwd = ctx->fwds[0][i];
-    if(fwd.terms.empty()) {
-      fwd.terms.push_back(Term{static_cast<int>(g.size() - 1), static_cast<int>(num_outputs + unconsumed_srcs.size())});
-      fwd.move_end++;
-      unconsumed_srcs.push_back(i);
     }
   }
 
@@ -209,23 +205,12 @@ execute_graph(const FunctionGraph& g, Executor& executor, std::vector<Future> in
   std::vector<Future> results;
 
   results.reserve(num_outputs);
-  ctx->outputs.reserve(num_outputs + unconsumed_srcs.size());
+  ctx->outputs.reserve(num_outputs);
 
   for(size_t i = 0; i < num_outputs; i++) {
     auto [p, f] = make_promise_future(*ctx->executor);
     ctx->outputs.push_back(std::move(p));
     results.push_back(std::move(f));
-  }
-
-  // Create a promise/future for each unconsumed_src
-  std::vector<std::pair<int, Future>> unconsumed_src_futures;
-
-  unconsumed_src_futures.reserve(unconsumed_srcs.size());
-
-  for(int unconsumed_src : unconsumed_srcs) {
-    auto [p, f] = make_promise_future(*ctx->executor);
-    ctx->outputs.push_back(std::move(p));
-    unconsumed_src_futures.emplace_back(unconsumed_src, std::move(f));
   }
 
   // Determine 0 input tasks to launch immediately
@@ -235,25 +220,46 @@ execute_graph(const FunctionGraph& g, Executor& executor, std::vector<Future> in
     }
   }
 
-  for(int i = 0; i < inputs.size(); i++) {
-    std::move(inputs[i]).then([ctx, i](Any value) mutable {
-      ctx->results[0][i] = std::move(value);
-      propogate_outputs(ctx, ctx->fwds[0][i], ctx->results[0][i]);
-    });
+  int owned_offset = 0;
+  int borrowed_offset = 0;
+  for(size_t i = 0; i < num_inputs; i++) {
+    if(input_types(g)[i].is_cref()) {
+      const ValueForward& fwd = ctx->fwds[0][i];
+      for(int i = fwd.move_end; i < static_cast<int>(fwd.terms.size()); i++) {
+        ctx->tasks[fwd.terms[i].node_id - 1]->borrowed_inputs.push_back(borrowed_inputs[borrowed_offset]);
+      }
+
+      borrowed_inputs[borrowed_offset++].then([ctx, i](const Any& value) mutable {
+        propogate_outputs(ctx, ctx->fwds[0][i], const_cast<Any&>(value));
+      });
+    } else {
+      std::move(inputs[owned_offset++]).then([ctx, i](Any value) mutable {
+        ctx->results[0][i] = std::move(value);
+        propogate_outputs(ctx, ctx->fwds[0][i], ctx->results[0][i]);
+      });
+    }
   }
 
-  return std::pair(std::move(results), std::move(unconsumed_src_futures));
+  return results;
 }
 
 template <typename Executor>
 std::vector<Any> execute_graph(const FunctionGraph& g, Executor&& executor, std::vector<Any> inputs) {
   std::vector<Future> input_futures;
-  input_futures.reserve(inputs.size());
-  for(Any& any : inputs) {
-    input_futures.emplace_back(executor, std::move(any));
+  std::vector<BorrowedFuture> borrowed_input_futures;
+
+  const auto num_inputs = input_types(g).size();
+
+  for(size_t i = 0; i < num_inputs; i++) {
+    Future f(executor, std::move(inputs[i]));
+    if(input_types(g)[i].is_cref()) {
+      borrowed_input_futures.push_back(borrow(std::move(f)).first);
+    } else {
+      input_futures.push_back(std::move(f));
+    }
   }
 
-  std::vector<Future> result_futures = execute_graph(g, executor, std::move(input_futures)).first;
+  std::vector<Future> result_futures = execute_graph(g, executor, std::move(input_futures), std::move(borrowed_input_futures));
 
   std::vector<Any> results;
   results.reserve(result_futures.size());
