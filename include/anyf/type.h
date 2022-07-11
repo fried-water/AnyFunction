@@ -24,20 +24,14 @@ public:
   TypeProperties() = default;
 
   template <typename T>
-  constexpr TypeProperties(Type<T> t)
-    : _type(anyf::type_id(knot::decay(t)))
-    , _category(knot::category(t))
-  {
-    if constexpr(anyf::is_const(t))
-      _properties |= TypeProperties::CONST_FLAG;
+  constexpr TypeProperties(Type<T> t) : _type(anyf::type_id(knot::decay(t))), _category(knot::category(t)) {
+    if constexpr(anyf::is_const(t)) _properties |= TypeProperties::CONST_FLAG;
     if constexpr(anyf::is_lref(t))
       _properties |= TypeProperties::LREF_FLAG;
     else if constexpr(anyf::is_rref(t))
       _properties |= TypeProperties::RREF_FLAG;
-    if constexpr(std::is_copy_constructible_v<T>)
-      _properties |= TypeProperties::COPYABLE_FLAG;
-    if constexpr(std::is_move_constructible_v<T>)
-      _properties |= TypeProperties::MOVEABLE_FLAG;
+    if constexpr(std::is_copy_constructible_v<T>) _properties |= TypeProperties::COPYABLE_FLAG;
+    if constexpr(std::is_move_constructible_v<T>) _properties |= TypeProperties::MOVEABLE_FLAG;
   }
 
   constexpr TypeID type_id() const { return _type; }

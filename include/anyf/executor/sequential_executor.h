@@ -10,7 +10,9 @@ struct SequentialExecutor {
   explicit SequentialExecutor(unsigned) {}
 
   template <typename F>
-  void operator()(F&& f) const { std::forward<F>(f)(); }
+  void operator()(F&& f) const {
+    std::forward<F>(f)();
+  }
 };
 
 } // namespace anyf

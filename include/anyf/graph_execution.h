@@ -1,11 +1,10 @@
 #pragma once
 
+#include "anyf/borrowed_future.h"
+#include "anyf/future.h"
 #include "anyf/graph.h"
 #include "anyf/static_graph.h"
 #include "anyf/util.h"
-
-#include "anyf/future.h"
-#include "anyf/borrowed_future.h"
 
 #include <algorithm>
 #include <atomic>
@@ -134,14 +133,15 @@ void execute_task(std::shared_ptr<ExecutionCtx<Executor>>& ctx, int idx) {
 }
 
 template <typename Executor>
-std::vector<Future> execute_graph(
-  const FunctionGraph& g,
-  Executor& executor,
-  std::vector<Future> inputs,
-  std::vector<BorrowedFuture> borrowed_inputs)
-{
-  check(inputs.size() + borrowed_inputs.size() == input_types(g).size(), 
-    "expected {} inputs given {} + {}", input_types(g).size(), inputs.size(), borrowed_inputs.size());
+std::vector<Future> execute_graph(const FunctionGraph& g,
+                                  Executor& executor,
+                                  std::vector<Future> inputs,
+                                  std::vector<BorrowedFuture> borrowed_inputs) {
+  check(inputs.size() + borrowed_inputs.size() == input_types(g).size(),
+        "expected {} inputs given {} + {}",
+        input_types(g).size(),
+        inputs.size(),
+        borrowed_inputs.size());
 
   const size_t num_inputs = input_types(g).size();
   const size_t num_outputs = output_types(g).size();
@@ -174,23 +174,21 @@ std::vector<Future> execute_graph(
       ValueForward& fwd = ctx->fwds[src.node_id][src.port];
       std::transform(it, next_it, std::back_inserter(fwd.terms), [](Edge e) { return e.dst; });
 
-      const auto ref_begin = std::stable_partition(fwd.terms.begin(), fwd.terms.end(),
-        [&](Term t) { return !input_type(g, t).is_cref(); });
+      const auto ref_begin =
+        std::stable_partition(fwd.terms.begin(), fwd.terms.end(), [&](Term t) { return !input_type(g, t).is_cref(); });
 
       fwd.move_end = static_cast<int>(std::distance(fwd.terms.begin(), ref_begin));
       fwd.copy_end = type.is_cref() ? fwd.move_end : std::max(0, fwd.move_end - 1);
 
       if(ref_begin != fwd.terms.end()) {
-        RefCleanup* cleanup = new RefCleanup{
-          static_cast<int>(std::distance(ref_begin, fwd.terms.end())),
-          src,
-          (type.is_copy_constructible() || fwd.copy_end == fwd.move_end)
-            ? std::nullopt
-            : std::optional(fwd.terms[fwd.copy_end])};
+        RefCleanup* cleanup = new RefCleanup{static_cast<int>(std::distance(ref_begin, fwd.terms.end())),
+                                             src,
+                                             (type.is_copy_constructible() || fwd.copy_end == fwd.move_end)
+                                               ? std::nullopt
+                                               : std::optional(fwd.terms[fwd.copy_end])};
 
-        std::for_each(ref_begin, fwd.terms.end(), [&](Term dst) {
-          ctx->tasks[dst.node_id - 1]->ref_cleanups.push_back(cleanup);
-        });
+        std::for_each(
+          ref_begin, fwd.terms.end(), [&](Term dst) { ctx->tasks[dst.node_id - 1]->ref_cleanups.push_back(cleanup); });
 
         if(type.is_copy_constructible() && fwd.copy_end != fwd.move_end) {
           fwd.copy_end++;
@@ -229,9 +227,8 @@ std::vector<Future> execute_graph(
         ctx->tasks[fwd.terms[i].node_id - 1]->borrowed_inputs.push_back(borrowed_inputs[borrowed_offset]);
       }
 
-      borrowed_inputs[borrowed_offset++].then([ctx, i](const Any& value) mutable {
-        propogate_outputs(ctx, ctx->fwds[0][i], const_cast<Any&>(value));
-      });
+      borrowed_inputs[borrowed_offset++].then(
+        [ctx, i](const Any& value) mutable { propogate_outputs(ctx, ctx->fwds[0][i], const_cast<Any&>(value)); });
     } else {
       std::move(inputs[owned_offset++]).then([ctx, i](Any value) mutable {
         ctx->results[0][i] = std::move(value);
@@ -259,7 +256,8 @@ std::vector<Any> execute_graph(const FunctionGraph& g, Executor&& executor, std:
     }
   }
 
-  std::vector<Future> result_futures = execute_graph(g, executor, std::move(input_futures), std::move(borrowed_input_futures));
+  std::vector<Future> result_futures =
+    execute_graph(g, executor, std::move(input_futures), std::move(borrowed_input_futures));
 
   std::vector<Any> results;
   results.reserve(result_futures.size());
@@ -271,11 +269,12 @@ std::vector<Any> execute_graph(const FunctionGraph& g, Executor&& executor, std:
 }
 
 template <typename... Outputs, typename Executor, typename... Inputs>
-auto execute_graph(const StaticFunctionGraph<TypeList<Outputs...>, TypeList<std::decay_t<Inputs>...>>& g, Executor&& executor,
+auto execute_graph(const StaticFunctionGraph<TypeList<Outputs...>, TypeList<std::decay_t<Inputs>...>>& g,
+                   Executor&& executor,
                    Inputs&&... inputs) {
   return apply_range<sizeof...(Outputs)>(
     execute_graph(g, std::move(executor), make_vector<Any>(std::forward<Inputs>(inputs)...)),
-      [](auto&&... anys) { return tuple_or_value(any_cast<Outputs>(std::move(anys))...); });
+    [](auto&&... anys) { return tuple_or_value(any_cast<Outputs>(std::move(anys))...); });
 }
 
 } // namespace anyf

@@ -29,8 +29,7 @@ public:
   std::optional<std::function<void()>> pop() {
     std::unique_lock<std::mutex> lock{_mutex};
     _cv.wait(lock, [&]() { return _done || !_q.empty(); });
-    if(_q.empty())
-      return std::nullopt;
+    if(_q.empty()) return std::nullopt;
     auto x = std::move(_q.front());
     _q.pop_front();
     return x;
@@ -38,8 +37,7 @@ public:
 
   std::optional<std::function<void()>> try_pop() {
     std::unique_lock<std::mutex> lock{_mutex, std::try_to_lock};
-    if(!lock || _q.empty())
-      return std::nullopt;
+    if(!lock || _q.empty()) return std::nullopt;
     auto x = std::move(_q.front());
     _q.pop_front();
     return x;
@@ -58,8 +56,7 @@ public:
   bool try_push(F&& f) {
     {
       std::unique_lock<std::mutex> lock{_mutex, std::try_to_lock};
-      if(!lock)
-        return false;
+      if(!lock) return false;
       _q.emplace_back(std::forward<F>(f));
     }
     _cv.notify_one();
@@ -88,8 +85,7 @@ class TaskExecutor {
       }
 
       auto opt_function = _q[i].pop();
-      if(!opt_function)
-        break;
+      if(!opt_function) break;
       (*opt_function)();
       _in_flight--;
     }
@@ -107,11 +103,9 @@ public:
   ~TaskExecutor() {
     _in_flight--;
 
-    for(auto& q : _q)
-      q.done();
+    for(auto& q : _q) q.done();
 
-    for(auto& thread : _threads)
-      thread.join();
+    for(auto& thread : _threads) thread.join();
   }
 
   template <typename F>
@@ -121,8 +115,7 @@ public:
 
     const int K = 5;
     for(unsigned n = 0; n < _count * K; n++) {
-      if(_q[(i + n) % _count].try_push(std::forward<F>(f)))
-        return;
+      if(_q[(i + n) % _count].try_push(std::forward<F>(f))) return;
     }
     _q[i % _count].push(std::forward<F>(f));
   }

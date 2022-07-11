@@ -69,9 +69,7 @@ inline std::vector<Any*> any_ptrs(Range&& anys) {
 
 template <typename F>
 AnyFunction::AnyFunction(F f)
-    : _input_types(make_types(args(Type<F>{})))
-    , _output_types(make_types(return_types(Type<F>{})))
-{
+    : _input_types(make_types(args(Type<F>{}))), _output_types(make_types(return_types(Type<F>{}))) {
   constexpr Type<F> f_type = {};
   constexpr auto fn_ret = return_types(f_type);
   constexpr auto fn_args = args(f_type);
@@ -87,17 +85,18 @@ AnyFunction::AnyFunction(F f)
     };
   } else {
     static_assert(is_const_function(f_type), "No mutable lambdas and non-const operator().");
-    static_assert(legal_return, "Function return type must be void, a value or tuple of "
-                                "values (no refs or pointers).");
-    static_assert(legal_args, "Function arguments must either be values on "
-                              "const refs (no non-const refs or pointers).");
+    static_assert(legal_return,
+                  "Function return type must be void, a value or tuple of "
+                  "values (no refs or pointers).");
+    static_assert(legal_args,
+                  "Function arguments must either be values on "
+                  "const refs (no non-const refs or pointers).");
     throw;
   }
 }
 
 inline AnyFunction::AnyFunction(TypeProperties props, Any any)
-    : _func([a = std::move(any)](Span<Any*>) { return std::vector<Any>{a}; })
-    , _output_types{props} {}
+    : _func([a = std::move(any)](Span<Any*>) { return std::vector<Any>{a}; }), _output_types{props} {}
 
 inline AnyFunction AnyFunction::bind(Any v, int idx) const {
   if(idx >= _input_types.size() || idx < 0 || _input_types[idx].type_id() != v.type()) {

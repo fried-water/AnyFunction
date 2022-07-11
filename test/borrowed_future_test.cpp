@@ -1,11 +1,10 @@
 #include "anyf/borrowed_future.h"
-
 #include "anyf/executor/sequential_executor.h"
+
+#include <boost/test/unit_test.hpp>
 
 #include <random>
 #include <thread>
-
-#include <boost/test/unit_test.hpp>
 
 using namespace anyf;
 
@@ -63,16 +62,13 @@ BOOST_AUTO_TEST_CASE(borrowed_future_send_then) {
 
   std::move(p).send(1);
 
-  b.then([](Any v) {
-    BOOST_CHECK_EQUAL(1, any_cast<int>(v));
-  });
+  b.then([](Any v) { BOOST_CHECK_EQUAL(1, any_cast<int>(v)); });
 
   b2.then([](Any v) {
-    BOOST_CHECK_EQUAL(1, any_cast<int>(v));
-    return 2;
-  }).then([](Any v) {
-    BOOST_CHECK_EQUAL(2, any_cast<int>(v));
-  });
+      BOOST_CHECK_EQUAL(1, any_cast<int>(v));
+      return 2;
+    })
+    .then([](Any v) { BOOST_CHECK_EQUAL(2, any_cast<int>(v)); });
 }
 
 BOOST_AUTO_TEST_CASE(borrowed_future_then_send) {
@@ -81,20 +77,16 @@ BOOST_AUTO_TEST_CASE(borrowed_future_then_send) {
 
   auto b2 = b;
 
-  b.then([](Any v) {
-    BOOST_CHECK_EQUAL(1, any_cast<int>(v));
-  });
+  b.then([](Any v) { BOOST_CHECK_EQUAL(1, any_cast<int>(v)); });
 
   b2.then([](Any v) {
-    BOOST_CHECK_EQUAL(1, any_cast<int>(v));
-    return 2;
-  }).then([](Any v) {
-    BOOST_CHECK_EQUAL(2, any_cast<int>(v));
-  });
+      BOOST_CHECK_EQUAL(1, any_cast<int>(v));
+      return 2;
+    })
+    .then([](Any v) { BOOST_CHECK_EQUAL(2, any_cast<int>(v)); });
 
   std::move(p).send(1);
 }
-
 
 BOOST_AUTO_TEST_CASE(borrowed_future_stress) {
   constexpr int count = 500;
@@ -112,7 +104,7 @@ BOOST_AUTO_TEST_CASE(borrowed_future_stress) {
     auto [b, f2] = borrow(std::move(f));
 
     functions.emplace_back([p = std::make_shared<Promise>(std::move(p))]() mutable { std::move(*p).send(1); });
-    functions.emplace_back([f2 = std::make_shared<Future>(std::move(f2)), &calls]() mutable { 
+    functions.emplace_back([f2 = std::make_shared<Future>(std::move(f2)), &calls]() mutable {
       BOOST_CHECK_EQUAL(1, any_cast<int>(std::move(*f2).wait()));
       calls++;
     });
@@ -121,7 +113,7 @@ BOOST_AUTO_TEST_CASE(borrowed_future_stress) {
 
     for(int i = 0; i < copies; i++) {
       if(rd() % 2 == 0) {
-        functions.emplace_back([b = b, &calls]() mutable { 
+        functions.emplace_back([b = b, &calls]() mutable {
           BOOST_CHECK_EQUAL(1, any_cast<int>(b.wait()));
           calls++;
         });

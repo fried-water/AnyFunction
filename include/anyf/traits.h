@@ -9,8 +9,8 @@
 namespace anyf {
 
 using knot::Type;
-using knot::TypeList;
 using knot::TypeCategory;
+using knot::TypeList;
 
 template <typename... Ts, typename F>
 constexpr bool all(TypeList<Ts...>, F f) {
@@ -31,7 +31,6 @@ template <typename... Ts>
 constexpr auto decay(TypeList<Ts...> tl) {
   return knot::map(tl, [](auto t) { return decay(t); });
 }
-
 
 template <typename T>
 constexpr bool is_const(Type<T>) {
@@ -91,8 +90,8 @@ constexpr auto return_type(Type<F>) {
 
 template <typename F>
 constexpr auto return_types(Type<F> f) {
-  const auto r = return_type(f); 
-  if constexpr (Type<void>{} == r) {
+  const auto r = return_type(f);
+  if constexpr(Type<void>{} == r) {
     return knot::typelist();
   } else if constexpr(is_tuple(r)) {
     return knot::as_typelist(r);

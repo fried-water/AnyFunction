@@ -3,15 +3,15 @@
 #include "anyf/any_function.h"
 #include "anyf/traits.h"
 #include "anyf/util.h"
-
 #include "knot/core.h"
-#include "tl/expected.hpp"
 
 #include <memory>
 #include <optional>
 #include <unordered_map>
 #include <variant>
 #include <vector>
+
+#include "tl/expected.hpp"
 
 namespace anyf {
 
@@ -68,13 +68,9 @@ inline std::string msg(const BadArity& e) {
   return fmt::format("Expected {} arguments, given {}", e.expected, e.given);
 }
 
-inline std::string msg(const BadType& e) {
-  return fmt::format("Incorrect type for argument {}", e.index);
-}
+inline std::string msg(const BadType& e) { return fmt::format("Incorrect type for argument {}", e.index); }
 
-inline std::string msg(const AlreadyMoved& e) {
-  return fmt::format("Value for argument {} already moved", e.index);
-}
+inline std::string msg(const AlreadyMoved& e) { return fmt::format("Value for argument {} already moved", e.index); }
 
 using GraphError = std::variant<BadArity, BadType, AlreadyMoved>;
 
@@ -167,8 +163,9 @@ public:
 
   tl::expected<FunctionGraph, GraphError> finalize(Span<Term> outputs) && {
     std::vector<TypeProperties> types;
-    std::transform(outputs.begin(), outputs.end(), std::back_inserter(types),
-      [&](Term t) { return output_type(_nodes, t).decayed(); });
+    std::transform(outputs.begin(), outputs.end(), std::back_inserter(types), [&](Term t) {
+      return output_type(_nodes, t).decayed();
+    });
 
     const auto check_result = check_types(types, outputs);
 
@@ -190,7 +187,8 @@ public:
   TypeProperties type(Term t) const { return output_type(_nodes, t); }
 
 private:
-  tl::expected<std::monostate, GraphError> check_types(const std::vector<TypeProperties>& expected_types, Span<Term> inputs) const {
+  tl::expected<std::monostate, GraphError> check_types(const std::vector<TypeProperties>& expected_types,
+                                                       Span<Term> inputs) const {
     if(inputs.size() != expected_types.size()) {
       return tl::unexpected{BadArity{int(expected_types.size()), int(inputs.size())}};
     }

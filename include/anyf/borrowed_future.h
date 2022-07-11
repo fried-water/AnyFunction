@@ -14,20 +14,18 @@ struct BorrowedSharedBlock {
   bool value_ready = false;
 
   BorrowedSharedBlock(Promise&& p, std::function<void(std::function<void()>)> executor)
-    : promise(std::move(p))
-    , executor(std::move(executor)) {}
+      : promise(std::move(p)), executor(std::move(executor)) {}
 
-  template<typename Executor>
+  template <typename Executor>
   BorrowedSharedBlock(Promise&& p, Executor& executor)
-    : BorrowedSharedBlock(std::move(p), 
-      [e_ptr = &executor, this](std::function<void()> f) { (*e_ptr)(std::move(f)); }) 
-    {}
+      : BorrowedSharedBlock(std::move(p),
+                            [e_ptr = &executor, this](std::function<void()> f) { (*e_ptr)(std::move(f)); }) {}
 
   ~BorrowedSharedBlock() { std::move(promise).send(std::move(value)); }
 };
 
 class BorrowedFuture {
- public:
+public:
   BorrowedFuture() = default;
 
   const Any& wait() {
@@ -36,7 +34,7 @@ class BorrowedFuture {
     return _block->value;
   }
 
-  template<typename F, typename = std::enable_if_t<std::is_same_v<void, std::invoke_result_t<F, const Any&>>>>
+  template <typename F, typename = std::enable_if_t<std::is_same_v<void, std::invoke_result_t<F, const Any&>>>>
   void then(F&& f) {
     std::unique_lock lk(_block->mutex);
 
@@ -51,7 +49,7 @@ class BorrowedFuture {
     }
   }
 
-  template<typename F, typename = std::enable_if_t<!std::is_same_v<void, std::invoke_result_t<F, const Any&>>>>
+  template <typename F, typename = std::enable_if_t<!std::is_same_v<void, std::invoke_result_t<F, const Any&>>>>
   Future then(F&& f) {
     auto [p, new_future] = make_promise_future(_block->executor);
     auto shared_p = std::make_shared<Promise>(std::move(p));
@@ -65,16 +63,15 @@ class BorrowedFuture {
         b = nullptr;
       });
     } else {
-      _block->continuations.emplace_back(
-        [f = std::forward<F>(f), p = std::move(shared_p)](const Any& value) mutable {
-          std::move(*p).send(std::forward<F>(f)(value));
-        });
+      _block->continuations.emplace_back([f = std::forward<F>(f), p = std::move(shared_p)](const Any& value) mutable {
+        std::move(*p).send(std::forward<F>(f)(value));
+      });
     }
 
     return std::move(new_future);
   }
 
- private:
+private:
   std::shared_ptr<BorrowedSharedBlock> _block;
 
   friend std::pair<BorrowedFuture, Future> borrow(Future);
@@ -110,4 +107,4 @@ inline std::pair<BorrowedFuture, Future> borrow(Future f) {
   return {BorrowedFuture(std::move(block)), std::move(new_f)};
 }
 
-}
+} // namespace anyf

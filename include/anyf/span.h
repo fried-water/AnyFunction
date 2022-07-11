@@ -12,8 +12,7 @@ class Span {
   const T* _begin = nullptr;
   const T* _end = nullptr;
 
- public:
-
+public:
   using value_type = T;
   using reference_type = const T&;
   using pointer_type = const T*;
@@ -61,9 +60,7 @@ class Span {
     return std::equal(lhs.begin(), lhs.end(), rhs.begin(), rhs.end());
   }
 
-  friend bool operator!=(const Span<T>& lhs, const Span<T>& rhs) {
-    return !(lhs == rhs);
-  }
+  friend bool operator!=(const Span<T>& lhs, const Span<T>& rhs) { return !(lhs == rhs); }
 };
 
 } // namespace anyf

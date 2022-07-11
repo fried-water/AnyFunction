@@ -1,5 +1,4 @@
 #include "anyf/executor/task_executor.h"
-
 #include "anyf/graph_execution.h"
 
 #include <boost/test/unit_test.hpp>
@@ -51,7 +50,8 @@ BOOST_AUTO_TEST_CASE(stress_test, *boost::unit_test::disabled()) {
   auto t0 = std::chrono::steady_clock::now();
   auto g = create_graph(depth);
 
-  fmt::print("Creating graph took {}ms\n", std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - t0).count());
+  fmt::print("Creating graph took {}ms\n",
+             std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - t0).count());
 
   t0 = std::chrono::steady_clock::now();
   int result = -1;
@@ -59,6 +59,8 @@ BOOST_AUTO_TEST_CASE(stress_test, *boost::unit_test::disabled()) {
     result = execute_graph(g, executor, 1);
   }
 
-  fmt::print("Result is {}, {} executions took {}ms\n", result, num_executions ,
-    std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - t0).count());
+  fmt::print("Result is {}, {} executions took {}ms\n",
+             result,
+             num_executions,
+             std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - t0).count());
 }

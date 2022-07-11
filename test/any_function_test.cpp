@@ -1,5 +1,4 @@
 #include "anyf/any_function.h"
-
 #include "sentinal.h"
 
 #include <boost/test/unit_test.hpp>
@@ -50,8 +49,7 @@ BOOST_AUTO_TEST_CASE(test_any_function_input_types) {
 
   BOOST_CHECK(make_types(TypeList<>{}) == no_args_func.input_types());
   BOOST_CHECK(make_types(TypeList<int>{}) == one_arg_func.input_types());
-  BOOST_CHECK(make_types(TypeList<std::tuple<>, std::string, const char&>{}) ==
-    many_args_func.input_types());
+  BOOST_CHECK(make_types(TypeList<std::tuple<>, std::string, const char&>{}) == many_args_func.input_types());
 }
 
 bool valid_exception(const BadCast&) { return true; }
@@ -110,9 +108,7 @@ BOOST_AUTO_TEST_CASE(test_any_function_num_moves_copies) {
 }
 
 BOOST_AUTO_TEST_CASE(test_any_function_fwd) {
-  const auto sentinal_func = AnyFunction([](Sentinal&& x) -> Sentinal&& {
-    return std::move(x);
-  });
+  const auto sentinal_func = AnyFunction([](Sentinal&& x) -> Sentinal&& { return std::move(x); });
 
   auto input_vals = make_vector<Any>(Sentinal{});
   auto result = sentinal_func(any_ptrs(input_vals));

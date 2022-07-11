@@ -47,7 +47,8 @@ BOOST_AUTO_TEST_CASE(simple_graph_construction) {
 BOOST_AUTO_TEST_CASE(simple_inner_graph) {
   auto [inner_cg, inner_inputs] = make_graph(make_types(TypeList<int, int>{}));
   const auto inner_id_outputs = inner_cg.add(AnyFunction(cidentity), std::array{inner_inputs[0]}).value();
-  const auto inner_sum_outputs = inner_cg.add(AnyFunction(sum), std::array{inner_id_outputs[0], inner_inputs[1]}).value();
+  const auto inner_sum_outputs =
+    inner_cg.add(AnyFunction(sum), std::array{inner_id_outputs[0], inner_inputs[1]}).value();
   const FunctionGraph inner_g = std::move(inner_cg).finalize(inner_sum_outputs).value();
 
   auto [cg, inputs] = make_graph(make_types(TypeList<int, int>{}));
@@ -69,14 +70,13 @@ BOOST_AUTO_TEST_CASE(simple_inner_graph) {
 
 BOOST_AUTO_TEST_CASE(graph_errors) {
   auto [cg, inputs] = make_graph(make_types(TypeList<int, char, MoveOnly>{}));
-  BOOST_CHECK((GraphError{BadArity{1, 2}})
-    == cg.add(AnyFunction(identity), std::array{inputs[0], inputs[0]}).error());
+  BOOST_CHECK((GraphError{BadArity{1, 2}}) == cg.add(AnyFunction(identity), std::array{inputs[0], inputs[0]}).error());
 
-  BOOST_CHECK((GraphError{BadType{0, type_id(Type<int>{}), type_id(Type<char>{})}})
-    == cg.add(AnyFunction(identity), std::array{inputs[1]}).error());
+  BOOST_CHECK((GraphError{BadType{0, type_id(Type<int>{}), type_id(Type<char>{})}}) ==
+              cg.add(AnyFunction(identity), std::array{inputs[1]}).error());
 
-  BOOST_CHECK((GraphError{AlreadyMoved{1, type_id(Type<MoveOnly>{})}})
-    == cg.add(AnyFunction([](MoveOnly, MoveOnly) { return 0; }), std::array{inputs[2], inputs[2]}).error());
+  BOOST_CHECK((GraphError{AlreadyMoved{1, type_id(Type<MoveOnly>{})}}) ==
+              cg.add(AnyFunction([](MoveOnly, MoveOnly) { return 0; }), std::array{inputs[2], inputs[2]}).error());
 }
 
 } // namespace anyf

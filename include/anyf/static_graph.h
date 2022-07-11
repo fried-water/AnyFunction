@@ -18,9 +18,10 @@ auto add_to_graph(T&& func, DelayedEdge<Inputs>... edges) {
   check((edges.cg == ...), "Edges don't all come from the same graph");
   ConstructingGraph* cg = std::get<0>(std::tie(edges...)).cg;
 
-  return apply_range<sizeof...(Outputs)>(cg->add(std::forward<T>(func), std::array{edges.term...}).value(), [&](auto... terms) {
-    return tuple_or_value(DelayedEdge<Outputs>{cg, terms}...);
-  });
+  return apply_range<sizeof...(Outputs)>(cg->add(std::forward<T>(func), std::array{edges.term...}).value(),
+                                         [&](auto... terms) {
+                                           return tuple_or_value(DelayedEdge<Outputs>{cg, terms}...);
+                                         });
 }
 
 template <typename Outputs, typename Inputs>
@@ -80,7 +81,7 @@ std::tuple<StaticConstructingGraph<TypeList<Inputs...>>, DelayedEdge<Inputs>...>
 
 template <typename... Outputs, typename... Inputs>
 StaticFunctionGraph<TypeList<Outputs...>, TypeList<Inputs...>> finalize(StaticConstructingGraph<TypeList<Inputs...>> cg,
-                                                            DelayedEdge<Outputs>... edges) {
+                                                                        DelayedEdge<Outputs>... edges) {
   check(((edges.cg == cg.cg.get()) && ...), "All edges must come from the same graph");
   return {std::move(*cg.cg).finalize(std::array{edges.term...}).value()};
 }

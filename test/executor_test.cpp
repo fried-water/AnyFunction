@@ -1,9 +1,7 @@
 #include "anyf/executor/sequential_executor.h"
 #include "anyf/executor/task_executor.h"
 #include "anyf/executor/tbb_executor.h"
-
 #include "anyf/graph_execution.h"
-
 #include "sentinal.h"
 
 #include <boost/test/unit_test.hpp>
@@ -60,13 +58,19 @@ auto create_pipeline(int seed) {
 auto create_graph() {
   auto [g, size] = make_graph<int>();
 
-  std::array<DelayedEdge<int64_t>, 8> ps = {
-    create_pipeline(0)(size), create_pipeline(1)(size), create_pipeline(2)(size), create_pipeline(3)(size),
-    create_pipeline(4)(size), create_pipeline(5)(size), create_pipeline(6)(size), create_pipeline(7)(size)};
+  std::array<DelayedEdge<int64_t>, 8> ps = {create_pipeline(0)(size),
+                                            create_pipeline(1)(size),
+                                            create_pipeline(2)(size),
+                                            create_pipeline(3)(size),
+                                            create_pipeline(4)(size),
+                                            create_pipeline(5)(size),
+                                            create_pipeline(6)(size),
+                                            create_pipeline(7)(size)};
 
   auto del_sum = Delayed(sum);
-  return finalize(std::move(g), del_sum(del_sum(del_sum(ps[0], ps[1]), del_sum(ps[2], ps[3])),
-                                        del_sum(del_sum(ps[4], ps[5]), del_sum(ps[6], ps[7]))));
+  return finalize(std::move(g),
+                  del_sum(del_sum(del_sum(ps[0], ps[1]), del_sum(ps[2], ps[3])),
+                          del_sum(del_sum(ps[4], ps[5]), del_sum(ps[6], ps[7]))));
 }
 
 template <typename Executor, typename Graph>
@@ -78,7 +82,9 @@ void execute_graph_with_threads(Graph g) {
     const auto t0 = std::chrono::steady_clock::now();
     const int64_t result = execute_graph(g, Executor(num_threads), size);
     const auto t1 = std::chrono::steady_clock::now();
-    fmt::print("{} THREADS: result is {} after {}us\n", num_threads, result,
+    fmt::print("{} THREADS: result is {} after {}us\n",
+               num_threads,
+               result,
                std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count());
   }
 }
@@ -129,7 +135,8 @@ BOOST_AUTO_TEST_CASE(test_graph_move_only) {
 }
 
 BOOST_AUTO_TEST_CASE(test_graph_fwd) {
-  const Delayed<TypeList<Sentinal>, TypeList<Sentinal>> fwd = Delayed([](Sentinal&& s) -> Sentinal&& { return std::move(s); });
+  const Delayed<TypeList<Sentinal>, TypeList<Sentinal>> fwd =
+    Delayed([](Sentinal&& s) -> Sentinal&& { return std::move(s); });
 
   auto [cg, s] = make_graph<Sentinal>();
   const auto g = finalize(std::move(cg), fwd(s));
@@ -172,9 +179,11 @@ BOOST_AUTO_TEST_CASE(test_graph_timing, *boost::unit_test::disabled()) {
 
   for(size_t i = 0; i < COUNT; i++) {
     outputs.push_back(cg.add(AnyFunction{[=](const std::string& s) {
-      std::this_thread::sleep_for(std::chrono::duration<int, std::milli>(i));
-      return s + " out";
-    }}, std::array{input_terms[i]}).value()[0]);
+                               std::this_thread::sleep_for(std::chrono::duration<int, std::milli>(i));
+                               return s + " out";
+                             }},
+                             std::array{input_terms[i]})
+                        .value()[0]);
   }
 
   const auto g = std::move(cg).finalize(outputs).value();
@@ -195,9 +204,8 @@ BOOST_AUTO_TEST_CASE(test_graph_timing, *boost::unit_test::disabled()) {
 
   auto futures = execute_graph(g, executor, {}, std::move(inputs));
 
-  futures.insert(futures.end(), 
-    std::make_move_iterator(input_futures.begin()),
-    std::make_move_iterator(input_futures.end()));
+  futures.insert(
+    futures.end(), std::make_move_iterator(input_futures.begin()), std::make_move_iterator(input_futures.end()));
 
   std::mutex m;
   std::vector<std::pair<std::string, std::chrono::time_point<std::chrono::steady_clock>>> ordered_results;
