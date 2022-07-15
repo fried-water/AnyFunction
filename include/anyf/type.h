@@ -10,6 +10,7 @@ using TypeID = uintptr_t;
 
 template <typename T>
 constexpr TypeID type_id(Type<T>) {
+  static_assert(std::is_same_v<T, std::decay_t<T>>);
   static_assert(std::is_move_constructible_v<T>);
 
   return reinterpret_cast<TypeID>(&type_id<T>) | uintptr_t(std::is_copy_constructible_v<T>);
