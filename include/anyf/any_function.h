@@ -99,7 +99,7 @@ inline AnyFunction::AnyFunction(TypeProperties props, Any any)
     : _func([a = std::move(any)](Span<Any*>) { return std::vector<Any>{a}; }), _output_types{props} {}
 
 inline AnyFunction AnyFunction::bind(Any v, int idx) const {
-  if(idx >= _input_types.size() || idx < 0 || _input_types[idx].type_id() != v.type()) {
+  if(idx >= _input_types.size() || idx < 0 || _input_types[idx].id != v.type()) {
     throw BadBind{};
   }
 

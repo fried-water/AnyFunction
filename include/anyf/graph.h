@@ -164,7 +164,7 @@ public:
   tl::expected<FunctionGraph, GraphError> finalize(Span<Term> outputs) && {
     std::vector<TypeProperties> types;
     std::transform(outputs.begin(), outputs.end(), std::back_inserter(types), [&](Term t) {
-      return output_type(_nodes, t).decayed();
+      return TypeProperties{output_type(_nodes, t).id, true};
     });
 
     const auto check_result = check_types(types, outputs);
@@ -200,20 +200,17 @@ private:
       const auto& term = inputs[i];
       const TypeProperties input_type = expected_types[i];
 
-      if(output_type(_nodes, term).type_id() != input_type.type_id()) {
-        return tl::unexpected{BadType{i, input_type.type_id(), output_type(_nodes, term).type_id()}};
+      if(output_type(_nodes, term).id != input_type.id) {
+        return tl::unexpected{BadType{i, input_type.id, output_type(_nodes, term).id}};
       }
 
-      if(input_type.is_cref() || input_type.is_copy_constructible()) {
+      if(!input_type.value || is_copyable(input_type.id)) {
         // Always fine
       } else {
-        // Shouldnt be able to compile an any_function with an argument like this
-        check(input_type.is_move_constructible(), "Error: type not moveable or copyable");
-
         const auto usage_it = _usage.find(term);
         const auto cur_it = std::find(moved_inputs.begin(), moved_inputs.end(), term);
         if(cur_it != moved_inputs.end() || (usage_it != _usage.end() && usage_it->second.values > 0)) {
-          return tl::unexpected{AlreadyMoved{i, input_type.type_id()}};
+          return tl::unexpected{AlreadyMoved{i, input_type.id}};
         } else {
           moved_inputs.push_back(term);
         }
@@ -227,10 +224,10 @@ private:
     for(int i = 0; i < inputs.ssize(); i++) {
       const auto term = inputs[i];
 
-      if(output_type(_nodes, term).is_cref()) {
-        _usage[term].borrows++;
-      } else {
+      if(output_type(_nodes, term).value) {
         _usage[term].values++;
+      } else {
+        _usage[term].borrows++;
       }
 
       _nodes[term.node_id].outputs.push_back({term.port, {static_cast<int>(_nodes.size()), i}});

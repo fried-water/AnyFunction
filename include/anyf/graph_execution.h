@@ -175,22 +175,22 @@ std::vector<Future> execute_graph(const FunctionGraph& g,
       std::transform(it, next_it, std::back_inserter(fwd.terms), [](Edge e) { return e.dst; });
 
       const auto ref_begin =
-        std::stable_partition(fwd.terms.begin(), fwd.terms.end(), [&](Term t) { return !input_type(g, t).is_cref(); });
+        std::stable_partition(fwd.terms.begin(), fwd.terms.end(), [&](Term t) { return input_type(g, t).value; });
 
       fwd.move_end = static_cast<int>(std::distance(fwd.terms.begin(), ref_begin));
-      fwd.copy_end = type.is_cref() ? fwd.move_end : std::max(0, fwd.move_end - 1);
+      fwd.copy_end = type.value ? std::max(0, fwd.move_end - 1) : fwd.move_end;
 
       if(ref_begin != fwd.terms.end()) {
         RefCleanup* cleanup = new RefCleanup{static_cast<int>(std::distance(ref_begin, fwd.terms.end())),
                                              src,
-                                             (type.is_copy_constructible() || fwd.copy_end == fwd.move_end)
+                                             (is_copyable(type.id) || fwd.copy_end == fwd.move_end)
                                                ? std::nullopt
                                                : std::optional(fwd.terms[fwd.copy_end])};
 
         std::for_each(
           ref_begin, fwd.terms.end(), [&](Term dst) { ctx->tasks[dst.node_id - 1]->ref_cleanups.push_back(cleanup); });
 
-        if(type.is_copy_constructible() && fwd.copy_end != fwd.move_end) {
+        if(is_copyable(type.id) && fwd.copy_end != fwd.move_end) {
           fwd.copy_end++;
         }
       }
@@ -221,7 +221,12 @@ std::vector<Future> execute_graph(const FunctionGraph& g,
   int owned_offset = 0;
   int borrowed_offset = 0;
   for(size_t i = 0; i < num_inputs; i++) {
-    if(input_types(g)[i].is_cref()) {
+    if(input_types(g)[i].value) {
+      std::move(inputs[owned_offset++]).then([ctx, i](Any value) mutable {
+        ctx->results[0][i] = std::move(value);
+        propogate_outputs(ctx, ctx->fwds[0][i], ctx->results[0][i]);
+      });
+    } else {
       const ValueForward& fwd = ctx->fwds[0][i];
       for(int i = fwd.move_end; i < static_cast<int>(fwd.terms.size()); i++) {
         ctx->tasks[fwd.terms[i].node_id - 1]->borrowed_inputs.push_back(borrowed_inputs[borrowed_offset]);
@@ -229,11 +234,6 @@ std::vector<Future> execute_graph(const FunctionGraph& g,
 
       borrowed_inputs[borrowed_offset++].then(
         [ctx, i](const Any& value) mutable { propogate_outputs(ctx, ctx->fwds[0][i], const_cast<Any&>(value)); });
-    } else {
-      std::move(inputs[owned_offset++]).then([ctx, i](Any value) mutable {
-        ctx->results[0][i] = std::move(value);
-        propogate_outputs(ctx, ctx->fwds[0][i], ctx->results[0][i]);
-      });
     }
   }
 
@@ -249,10 +249,10 @@ std::vector<Any> execute_graph(const FunctionGraph& g, Executor&& executor, std:
 
   for(size_t i = 0; i < num_inputs; i++) {
     Future f(executor, std::move(inputs[i]));
-    if(input_types(g)[i].is_cref()) {
-      borrowed_input_futures.push_back(borrow(std::move(f)).first);
-    } else {
+    if(input_types(g)[i].value) {
       input_futures.push_back(std::move(f));
+    } else {
+      borrowed_input_futures.push_back(borrow(std::move(f)).first);
     }
   }
 

@@ -172,7 +172,7 @@ BOOST_AUTO_TEST_CASE(test_graph_forwarded_ref) {
 BOOST_AUTO_TEST_CASE(test_graph_timing, *boost::unit_test::disabled()) {
   const size_t COUNT = 5;
 
-  const std::vector<TypeProperties> input_types(COUNT, TypeProperties(Type<const std::string&>{}));
+  const std::vector<TypeProperties> input_types(COUNT, make_type_properties(Type<const std::string&>{}));
   auto [cg, input_terms] = make_graph(input_types);
 
   std::vector<Term> outputs;
