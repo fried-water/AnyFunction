@@ -17,7 +17,9 @@ constexpr TypeID type_id(Type<T>) {
 }
 
 template <typename T>
-constexpr TypeID type_id() { return type_id(Type<T>{}); }
+constexpr TypeID type_id() {
+  return type_id(Type<T>{});
+}
 
 constexpr bool is_copyable(TypeID t) { return t & 1; }
 
@@ -40,8 +42,13 @@ constexpr TypeProperties make_type_properties(Type<T> t) {
 }
 
 template <typename... Ts>
-std::vector<TypeProperties> make_types(TypeList<Ts...>) {
+std::vector<TypeProperties> make_type_properties(TypeList<Ts...>) {
   return {make_type_properties(Type<Ts>{})...};
+}
+
+template <typename... Ts>
+std::vector<TypeID> make_type_ids(TypeList<Ts...>) {
+  return {type_id(decay(Type<Ts>{}))...};
 }
 
 } // namespace anyf

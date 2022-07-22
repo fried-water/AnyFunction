@@ -21,25 +21,27 @@ struct BadBind final : std::exception {
 
 class AnyFunction {
 public:
-  template <typename F>
+  AnyFunction(std::vector<TypeProperties> input_types,
+              std::vector<TypeID> output_types,
+              std::function<std::vector<Any>(Span<Any*>)> f)
+      : _input_types(std::move(input_types)), _output_types(std::move(output_types)), _func(std::move(f)) {}
+
+  template <typename F, typename = std::enable_if_t<!std::is_convertible_v<F, AnyFunction>>>
   explicit AnyFunction(F f);
 
-  explicit AnyFunction(TypeProperties, Any);
+  explicit AnyFunction(Any any)
+      : AnyFunction({}, {any.type()}, [a = std::move(any)](Span<Any*>) { return std::vector<Any>{a}; }) {}
 
   std::vector<Any> operator()(Span<Any*> inputs) const { return _func(inputs); }
 
   const std::vector<TypeProperties>& input_types() const { return _input_types; }
-  const std::vector<TypeProperties>& output_types() const { return _output_types; }
-
-  AnyFunction bind(Any, int idx) const;
+  const std::vector<TypeID>& output_types() const { return _output_types; }
 
 private:
-  AnyFunction() = default;
+  std::vector<TypeProperties> _input_types;
+  std::vector<TypeID> _output_types;
 
   std::function<std::vector<Any>(Span<Any*>)> _func;
-
-  std::vector<TypeProperties> _input_types;
-  std::vector<TypeProperties> _output_types;
 };
 
 namespace details {
@@ -67,9 +69,9 @@ inline std::vector<Any*> any_ptrs(Range&& anys) {
   return ptrs;
 }
 
-template <typename F>
+template <typename F, typename>
 AnyFunction::AnyFunction(F f)
-    : _input_types(make_types(args(Type<F>{}))), _output_types(make_types(return_types(Type<F>{}))) {
+    : _input_types(make_type_properties(args(Type<F>{}))), _output_types(make_type_ids(return_types(Type<F>{}))) {
   constexpr Type<F> f_type = {};
   constexpr auto fn_ret = return_types(f_type);
   constexpr auto fn_args = args(f_type);
@@ -91,37 +93,7 @@ AnyFunction::AnyFunction(F f)
     static_assert(legal_args,
                   "Function arguments must either be values on "
                   "const refs (no non-const refs or pointers).");
-    throw;
   }
-}
-
-inline AnyFunction::AnyFunction(TypeProperties props, Any any)
-    : _func([a = std::move(any)](Span<Any*>) { return std::vector<Any>{a}; }), _output_types{props} {}
-
-inline AnyFunction AnyFunction::bind(Any v, int idx) const {
-  if(idx >= _input_types.size() || idx < 0 || _input_types[idx].id != v.type()) {
-    throw BadBind{};
-  }
-
-  AnyFunction anyf;
-
-  anyf._func = [v = std::move(v), idx, f = _func](Span<Any*> span) mutable {
-    std::vector<Any*> anys;
-    anys.reserve(span.size() + 1);
-
-    std::copy(span.begin(), span.begin() + idx, std::back_inserter(anys));
-    anys.push_back(&v);
-    std::copy(span.begin() + idx, span.end(), std::back_inserter(anys));
-
-    return f(anys);
-  };
-
-  anyf._input_types = _input_types;
-  anyf._output_types = _output_types;
-
-  anyf._input_types.erase(anyf._input_types.begin() + idx);
-
-  return anyf;
 }
 
 } // namespace anyf

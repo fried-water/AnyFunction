@@ -150,7 +150,7 @@ BOOST_AUTO_TEST_CASE(test_graph_fwd) {
 BOOST_AUTO_TEST_CASE(test_graph_forwarded_ref) {
   const SequentialExecutor executor;
 
-  auto [cg, inputs] = make_graph(make_types(TypeList<const Sentinal&, const Sentinal&>{}));
+  auto [cg, inputs] = make_graph(make_type_properties(TypeList<const Sentinal&, const Sentinal&>{}));
 
   cg.add(AnyFunction{[](const Sentinal&, Sentinal) {}}, std::array{inputs[0], inputs[0]});
 

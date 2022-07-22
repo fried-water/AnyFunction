@@ -38,7 +38,7 @@ struct TermUsage {
 };
 
 struct Node {
-  std::variant<AnyFunction, std::vector<TypeProperties>> func = std::vector<TypeProperties>{};
+  std::variant<AnyFunction, std::vector<TypeProperties>, std::vector<TypeID>> func = std::vector<TypeProperties>{};
   std::vector<Edge> outputs = {};
 };
 
@@ -84,6 +84,9 @@ inline std::vector<Term> make_terms(NodeId node, int size) {
 
 inline TypeProperties input_type(const std::vector<Node>& nodes, Term t) {
   return std::visit(Overloaded{[&](const std::vector<TypeProperties>& types) { return types[t.port]; },
+                               [&](const std::vector<TypeID>& types) {
+                                 return TypeProperties{types[t.port], true};
+                               },
                                [&](const AnyFunction& f) { return f.input_types()[t.port]; }},
                     nodes[t.node_id].func);
 }
@@ -91,7 +94,12 @@ inline TypeProperties input_type(const std::vector<Node>& nodes, Term t) {
 inline TypeProperties output_type(const std::vector<Node>& nodes, Term t) {
   check(t.node_id < nodes.size(), "node {} out of range ({})", t.node_id, nodes.size());
   return std::visit(Overloaded{[&](const std::vector<TypeProperties>& types) { return types[t.port]; },
-                               [&](const AnyFunction& f) { return f.output_types()[t.port]; }},
+                               [&](const std::vector<TypeID>& types) {
+                                 return TypeProperties{types[t.port], true};
+                               },
+                               [&](const AnyFunction& f) {
+                                 return TypeProperties{f.output_types()[t.port], true};
+                               }},
                     nodes[t.node_id].func);
 }
 
@@ -101,8 +109,8 @@ inline const std::vector<TypeProperties>& input_types(const FunctionGraph& g) {
   return std::get<std::vector<TypeProperties>>(g.front().func);
 }
 
-inline const std::vector<TypeProperties>& output_types(const FunctionGraph& g) {
-  return std::get<std::vector<TypeProperties>>(g.back().func);
+inline const std::vector<TypeID>& output_types(const FunctionGraph& g) {
+  return std::get<std::vector<TypeID>>(g.back().func);
 }
 
 class ConstructingGraph {
@@ -128,7 +136,7 @@ public:
 
   tl::expected<std::vector<Term>, GraphError> add(const FunctionGraph& f, Span<Term> inputs) {
     check(f.size() >= 2, "F must have atleast 2 nodes");
-    const auto check_result = check_types(std::get<std::vector<TypeProperties>>(f[0].func), inputs);
+    const auto check_result = check_types(input_types(f), inputs);
 
     if(!check_result) {
       return tl::unexpected{check_result.error()};
@@ -139,7 +147,7 @@ public:
       node_inputs[i].resize(std::get<AnyFunction>(f[i + 1].func).input_types().size());
     }
 
-    std::vector<Term> outputs(std::get<std::vector<TypeProperties>>(f.back().func).size());
+    std::vector<Term> outputs(output_types(f).size());
 
     const int initial_node_offset = static_cast<int>(_nodes.size()) - 1;
 
@@ -162,12 +170,18 @@ public:
   }
 
   tl::expected<FunctionGraph, GraphError> finalize(Span<Term> outputs) && {
-    std::vector<TypeProperties> types;
-    std::transform(outputs.begin(), outputs.end(), std::back_inserter(types), [&](Term t) {
-      return TypeProperties{output_type(_nodes, t).id, true};
+    std::vector<TypeID> types;
+    types.reserve(outputs.size());
+    std::transform(
+      outputs.begin(), outputs.end(), std::back_inserter(types), [&](Term t) { return output_type(_nodes, t).id; });
+
+    std::vector<TypeProperties> props;
+    props.reserve(outputs.size());
+    std::transform(types.begin(), types.end(), std::back_inserter(props), [](TypeID t) {
+      return TypeProperties{t, true};
     });
 
-    const auto check_result = check_types(types, outputs);
+    const auto check_result = check_types(props, outputs);
 
     if(!check_result) {
       return tl::unexpected{check_result.error()};

@@ -37,7 +37,8 @@ class StaticConstructingGraph;
 
 template <typename... Inputs>
 struct StaticConstructingGraph<TypeList<Inputs...>> {
-  std::unique_ptr<ConstructingGraph> cg = std::make_unique<ConstructingGraph>(make_types(TypeList<Inputs...>{}));
+  std::unique_ptr<ConstructingGraph> cg =
+    std::make_unique<ConstructingGraph>(make_type_properties(TypeList<Inputs...>{}));
 };
 
 template <typename Outputs, typename Inputs>

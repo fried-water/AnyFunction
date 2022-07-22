@@ -27,7 +27,7 @@ bool compare_node_outputs(const Node& expected, const Node& actual) { return exp
 } // namespace
 
 BOOST_AUTO_TEST_CASE(simple_graph_construction) {
-  auto [cg, inputs] = make_graph(make_types(TypeList<int, int>{}));
+  auto [cg, inputs] = make_graph(make_type_properties(TypeList<int, int>{}));
   const auto id_outputs = cg.add(AnyFunction(cidentity), std::array{inputs[0]}).value();
   const auto sum_outputs = cg.add(AnyFunction(sum), std::array{id_outputs[0], inputs[1]}).value();
   const FunctionGraph g = std::move(cg).finalize(sum_outputs).value();
@@ -40,18 +40,18 @@ BOOST_AUTO_TEST_CASE(simple_graph_construction) {
 
   BOOST_CHECK(std::equal(expected_edges.begin(), expected_edges.end(), g.begin(), g.end(), compare_edges_to_nodes));
 
-  BOOST_CHECK(make_types(TypeList<int, int>{}) == std::get<std::vector<TypeProperties>>(g.front().func));
-  BOOST_CHECK(make_types(TypeList<int>{}) == std::get<std::vector<TypeProperties>>(g.back().func));
+  BOOST_CHECK(make_type_properties(TypeList<int, int>{}) == input_types(g));
+  BOOST_CHECK(make_type_ids(TypeList<int>{}) == output_types(g));
 }
 
 BOOST_AUTO_TEST_CASE(simple_inner_graph) {
-  auto [inner_cg, inner_inputs] = make_graph(make_types(TypeList<int, int>{}));
+  auto [inner_cg, inner_inputs] = make_graph(make_type_properties(TypeList<int, int>{}));
   const auto inner_id_outputs = inner_cg.add(AnyFunction(cidentity), std::array{inner_inputs[0]}).value();
   const auto inner_sum_outputs =
     inner_cg.add(AnyFunction(sum), std::array{inner_id_outputs[0], inner_inputs[1]}).value();
   const FunctionGraph inner_g = std::move(inner_cg).finalize(inner_sum_outputs).value();
 
-  auto [cg, inputs] = make_graph(make_types(TypeList<int, int>{}));
+  auto [cg, inputs] = make_graph(make_type_properties(TypeList<int, int>{}));
   const auto id_outputs = cg.add(AnyFunction(identity), std::array{inputs[0]}).value();
   const auto g_outputs = cg.add(inner_g, std::array{id_outputs[0], inputs[1]}).value();
   const auto by2_outputs = cg.add(AnyFunction(by2), g_outputs).value();
@@ -69,7 +69,7 @@ BOOST_AUTO_TEST_CASE(simple_inner_graph) {
 }
 
 BOOST_AUTO_TEST_CASE(graph_errors) {
-  auto [cg, inputs] = make_graph(make_types(TypeList<int, char, MoveOnly>{}));
+  auto [cg, inputs] = make_graph(make_type_properties(TypeList<int, char, MoveOnly>{}));
   BOOST_CHECK((GraphError{BadArity{1, 2}}) == cg.add(AnyFunction(identity), std::array{inputs[0], inputs[0]}).error());
 
   BOOST_CHECK((GraphError{BadType{0, type_id(Type<int>{}), type_id(Type<char>{})}}) ==

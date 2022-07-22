@@ -18,13 +18,15 @@ std::tuple<Outputs...> invoke_with_values(const AnyFunction& func, Inputs... inp
     std::move(result), [](auto&&... anys) { return std::tuple(any_cast<Outputs>(std::move(anys))...); });
 }
 
-void void_fp(){};
-int simple_fp() { return 1; };
-auto tuple_fp() { return std::tuple('a', 1); };
+void void_fp() {}
+int simple_fp() { return 1; }
+auto tuple_fp() { return std::tuple('a', 1); }
+int&& rvalue_fp(int&& x) { return std::move(x); }
 
-void no_args(){};
-void one_arg(int){};
-void many_args(std::tuple<>, const std::string, const char&){};
+void no_args() {}
+void one_arg(int) {}
+void rvalue_arg(int&&) {}
+void many_args(std::tuple<>, const std::string, const char&) {}
 
 }; // namespace
 
@@ -32,24 +34,29 @@ BOOST_AUTO_TEST_CASE(test_any_function_return_types) {
   const auto void_func = AnyFunction(void_fp);
   const auto single_func = AnyFunction(simple_fp);
   const auto tuple_func = AnyFunction(tuple_fp);
+  const auto rvalue_func = AnyFunction(rvalue_fp);
 
-  BOOST_CHECK(make_types(TypeList<>{}) == void_func.output_types());
-  BOOST_CHECK(make_types(TypeList<int>{}) == single_func.output_types());
-  BOOST_CHECK(make_types(TypeList<char, int>{}) == tuple_func.output_types());
+  BOOST_CHECK(make_type_ids(TypeList<>{}) == void_func.output_types());
+  BOOST_CHECK(make_type_ids(TypeList<int>{}) == single_func.output_types());
+  BOOST_CHECK(make_type_ids(TypeList<char, int>{}) == tuple_func.output_types());
+  BOOST_CHECK(make_type_ids(TypeList<int>{}) == rvalue_func.output_types());
 
   BOOST_CHECK(std::tuple() == invoke_with_values(void_func));
   BOOST_CHECK(std::tuple(1) == invoke_with_values<int>(single_func));
   BOOST_CHECK(std::tuple('a', 1) == (invoke_with_values<char, int>(tuple_func)));
+  BOOST_CHECK(std::tuple(1) == (invoke_with_values<int>(rvalue_func, 1)));
 }
 
 BOOST_AUTO_TEST_CASE(test_any_function_input_types) {
   const auto no_args_func = AnyFunction(no_args);
   const auto one_arg_func = AnyFunction(one_arg);
   const auto many_args_func = AnyFunction(many_args);
+  const auto rvalue_arg_func = AnyFunction(rvalue_arg);
 
-  BOOST_CHECK(make_types(TypeList<>{}) == no_args_func.input_types());
-  BOOST_CHECK(make_types(TypeList<int>{}) == one_arg_func.input_types());
-  BOOST_CHECK(make_types(TypeList<std::tuple<>, std::string, const char&>{}) == many_args_func.input_types());
+  BOOST_CHECK(make_type_properties(TypeList<>{}) == no_args_func.input_types());
+  BOOST_CHECK(make_type_properties(TypeList<int>{}) == one_arg_func.input_types());
+  BOOST_CHECK(make_type_properties(TypeList<std::tuple<>, std::string, const char&>{}) == many_args_func.input_types());
+  BOOST_CHECK(make_type_properties(TypeList<int>{}) == rvalue_arg_func.input_types());
 }
 
 bool valid_exception(const BadCast&) { return true; }
@@ -119,34 +126,4 @@ BOOST_AUTO_TEST_CASE(test_any_function_fwd) {
 
   BOOST_CHECK_EQUAL(0, result_sentinal->copies);
   BOOST_CHECK_EQUAL(2, result_sentinal->moves); // 1 move into any, 1 move into result
-}
-
-BOOST_AUTO_TEST_CASE(test_any_function_bind) {
-  const auto func = AnyFunction([](int x, int y) { return x + y; });
-
-  const auto bind_x = func.bind(5, 0);
-
-  BOOST_CHECK_EQUAL(5, std::get<0>(invoke_with_values<int>(bind_x, 0)));
-  BOOST_CHECK_EQUAL(6, std::get<0>(invoke_with_values<int>(bind_x, 1)));
-
-  const auto bind_y = bind_x.bind(3, 0);
-
-  BOOST_CHECK_EQUAL(8, std::get<0>(invoke_with_values<int>(bind_y)));
-}
-
-BOOST_AUTO_TEST_CASE(test_any_function_bind_error) {
-  const auto func = AnyFunction([](int x, int y) { return x + y; });
-
-  BOOST_CHECK_EXCEPTION(func.bind(5, -1), BadBind, valid_exception);
-  BOOST_CHECK_EXCEPTION(func.bind(5, 2), BadBind, valid_exception);
-  BOOST_CHECK_EXCEPTION(func.bind("abc", 0), BadBind, valid_exception);
-}
-
-BOOST_AUTO_TEST_CASE(test_any_function_bind_consume) {
-  const auto func = AnyFunction([](std::vector<int> x) { return x.size(); });
-  const auto bind_vec = func.bind(std::vector<int>{3}, 0);
-
-  // First call will consume the bound vector
-  BOOST_CHECK_EQUAL(1, std::get<0>(invoke_with_values<size_t>(bind_vec)));
-  BOOST_CHECK_EQUAL(0, std::get<0>(invoke_with_values<size_t>(bind_vec)));
 }
