@@ -16,6 +16,9 @@ constexpr TypeID type_id(Type<T>) {
   return reinterpret_cast<TypeID>(&type_id<T>) | uintptr_t(std::is_copy_constructible_v<T>);
 }
 
+template <typename T>
+constexpr TypeID type_id() { return type_id(Type<T>{}); }
+
 constexpr bool is_copyable(TypeID t) { return t & 1; }
 
 struct TypeProperties {

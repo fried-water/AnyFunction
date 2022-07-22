@@ -75,6 +75,9 @@ public:
     _block = nullptr;
   }
 
+  explicit operator bool() const { return _block != nullptr; }
+  bool valid() const { return static_cast<bool>(*this); }
+
 private:
   std::shared_ptr<SharedBlock> _block;
 
@@ -152,6 +155,9 @@ public:
     _block = nullptr;
     return std::move(new_future);
   }
+
+  explicit operator bool() const { return _block != nullptr; }
+  bool valid() const { return static_cast<bool>(*this); }
 
 private:
   std::shared_ptr<SharedBlock> _block;

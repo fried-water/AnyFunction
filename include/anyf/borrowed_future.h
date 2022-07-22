@@ -71,6 +71,12 @@ public:
     return std::move(new_future);
   }
 
+  // This is safe since weak_ptrs aren't used so long as no one shares the same BorrowedFuture object across threads
+  bool unique() const { return _block.use_count() == 1; }
+
+  explicit operator bool() const { return _block != nullptr; }
+  bool valid() const { return static_cast<bool>(*this); }
+
 private:
   std::shared_ptr<BorrowedSharedBlock> _block;
 
