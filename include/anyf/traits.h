@@ -52,6 +52,16 @@ constexpr bool is_const_ref(Type<T> t) {
   return is_const(t) && is_lref(t);
 }
 
+template <typename... Ts>
+constexpr bool is_tuple(Type<std::tuple<Ts...>>) {
+  return true;
+}
+
+template <typename T>
+constexpr bool is_tuple(Type<T>) {
+  return false;
+}
+
 namespace detail {
 
 template <typename>
