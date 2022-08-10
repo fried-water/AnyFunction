@@ -64,15 +64,22 @@ struct AlreadyMoved {
   KNOT_ORDERED(AlreadyMoved);
 };
 
+struct CannotCopy {
+  int index = 0;
+  TypeID type;
+
+  KNOT_ORDERED(CannotCopy);
+};
+
 inline std::string msg(const BadArity& e) {
   return fmt::format("Expected {} arguments, given {}", e.expected, e.given);
 }
 
 inline std::string msg(const BadType& e) { return fmt::format("Incorrect type for argument {}", e.index); }
-
 inline std::string msg(const AlreadyMoved& e) { return fmt::format("Value for argument {} already moved", e.index); }
+inline std::string msg(const CannotCopy& e) { return fmt::format("Input argument {} cannot be copied moved", e.index); }
 
-using GraphError = std::variant<BadArity, BadType, AlreadyMoved>;
+using GraphError = std::variant<BadArity, BadType, AlreadyMoved, CannotCopy>;
 
 inline std::vector<Term> make_terms(NodeId node, int size) {
   std::vector<Term> terms;
@@ -213,13 +220,14 @@ private:
     for(int i = 0; i < inputs.ssize(); i++) {
       const auto& term = inputs[i];
       const TypeProperties input_type = expected_types[i];
+      const TypeProperties given_type = output_type(_nodes, term);
 
-      if(output_type(_nodes, term).id != input_type.id) {
-        return tl::unexpected{BadType{i, input_type.id, output_type(_nodes, term).id}};
-      }
-
-      if(!input_type.value || is_copyable(input_type.id)) {
-        // Always fine
+      if(given_type.id != input_type.id) {
+        return tl::unexpected{BadType{i, input_type.id, given_type.id}};
+      } else if(!input_type.value || is_copyable(input_type.id)) {
+        // always fine
+      } else if(!given_type.value) {
+        return tl::unexpected{CannotCopy{term.port, input_type.id}};
       } else {
         const auto usage_it = _usage.find(term);
         const auto cur_it = std::find(moved_inputs.begin(), moved_inputs.end(), term);

@@ -69,7 +69,7 @@ BOOST_AUTO_TEST_CASE(simple_inner_graph) {
 }
 
 BOOST_AUTO_TEST_CASE(graph_errors) {
-  auto [cg, inputs] = make_graph(make_type_properties(TypeList<int, char, MoveOnly>{}));
+  auto [cg, inputs] = make_graph(make_type_properties(TypeList<int, char, MoveOnly, const MoveOnly&>{}));
   BOOST_CHECK((GraphError{BadArity{1, 2}}) == cg.add(AnyFunction(identity), std::array{inputs[0], inputs[0]}).error());
 
   BOOST_CHECK((GraphError{BadType{0, type_id(Type<int>{}), type_id(Type<char>{})}}) ==
@@ -77,6 +77,9 @@ BOOST_AUTO_TEST_CASE(graph_errors) {
 
   BOOST_CHECK((GraphError{AlreadyMoved{1, type_id(Type<MoveOnly>{})}}) ==
               cg.add(AnyFunction([](MoveOnly, MoveOnly) { return 0; }), std::array{inputs[2], inputs[2]}).error());
+
+  BOOST_CHECK((GraphError{CannotCopy{3, type_id(Type<MoveOnly>{})}}) ==
+              cg.add(AnyFunction([](MoveOnly) { return 0; }), std::array{inputs[3]}).error());
 }
 
 } // namespace anyf
