@@ -1,9 +1,7 @@
 #pragma once
 
 #include <algorithm>
-#include <array>
 #include <optional>
-#include <vector>
 
 namespace anyf {
 
@@ -24,10 +22,10 @@ public:
   Span(const T* begin, const T* end) : _begin(begin), _end(end) {}
   Span(const T* begin, std::size_t count) : _begin(begin), _end(begin + count) {}
 
-  template <size_t N>
-  Span(const std::array<T, N>& arr) : _begin(arr.data()), _end(arr.data() + arr.size()) {}
+  template<typename Range, typename = std::enable_if_t<std::is_same_v<T, typename std::decay_t<Range>::value_type>>>
+  Span(Range&& rng) : _begin(std::data(rng)), _end(std::data(rng) + rng.size()) {}
 
-  Span(const std::vector<T>& vec) : _begin(vec.data()), _end(vec.data() + vec.size()) {}
+  Span(std::initializer_list<T> il) : _begin(std::data(il)), _end(std::data(il) + il.size()) {}
 
   Span(const std::optional<T>& opt)
       : _begin(opt ? std::addressof(*opt) : nullptr), _end(opt ? std::addressof(*opt) + 1 : nullptr) {}
