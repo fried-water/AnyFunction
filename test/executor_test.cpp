@@ -73,19 +73,21 @@ auto create_graph() {
                           del_sum(del_sum(ps[4], ps[5]), del_sum(ps[6], ps[7]))));
 }
 
-template <typename Executor, typename Graph>
-void execute_graph_with_threads(Graph g) {
+template <typename Graph, typename MakeExecutor>
+void execute_graph_with_threads(Graph g, MakeExecutor f) {
   const int size = 500'000;
   const int max_threads = 8;
 
   for(int num_threads = 1; num_threads <= max_threads; num_threads++) {
+    auto e = f(num_threads);
     const auto t0 = std::chrono::steady_clock::now();
-    const int64_t result = execute_graph(g, Executor(num_threads), size);
+    const int64_t result = execute_graph(g, e, size);
     const auto t1 = std::chrono::steady_clock::now();
     fmt::print("{} THREADS: result is {} after {}us\n",
                num_threads,
                result,
                std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count());
+    e.wait();
   }
 }
 
@@ -93,17 +95,17 @@ void execute_graph_with_threads(Graph g) {
 
 BOOST_AUTO_TEST_CASE(example_graph_tbb, *boost::unit_test::disabled()) {
   fmt::print("\nExecuting graph with TBB\n\n");
-  execute_graph_with_threads<TBBExecutor>(create_graph());
+  execute_graph_with_threads(create_graph(), [](int n) { return make_tbb_executor(n); });
 }
 
 BOOST_AUTO_TEST_CASE(example_graph_task, *boost::unit_test::disabled()) {
   fmt::print("\nExecuting graph with custom task system\n\n");
-  execute_graph_with_threads<TaskExecutor>(create_graph());
+  execute_graph_with_threads(create_graph(), [](int n) { return make_task_executor(n); });
 }
 
 BOOST_AUTO_TEST_CASE(example_graph_seq, *boost::unit_test::disabled()) {
   fmt::print("\nExecuting graph Sequentially\n\n");
-  execute_graph_with_threads<SequentialExecutor>(create_graph());
+  execute_graph_with_threads(create_graph(), [](int) { return make_seq_executor(); });
 }
 
 BOOST_AUTO_TEST_CASE(test_graph_input_sentinal) {
@@ -117,7 +119,7 @@ BOOST_AUTO_TEST_CASE(test_graph_input_sentinal) {
   auto [cg, s1, s2, s3] = make_graph<Sentinal, Sentinal, Sentinal>();
 
   const auto g = finalize(std::move(cg), take(take(take(s1))), take(s2), s2, take_ref(s3), s3);
-  const auto [r1, r2, r3, r4, r5] = execute_graph(g, SequentialExecutor{}, Sentinal{}, Sentinal{}, Sentinal{});
+  const auto [r1, r2, r3, r4, r5] = execute_graph(g, make_seq_executor(), Sentinal{}, Sentinal{}, Sentinal{});
   BOOST_CHECK_EQUAL(0, r1.copies); // Move since s1 no other inputs
   BOOST_CHECK_EQUAL(1,
                     r2.copies + r3.copies); // s2 has two outputs one is copied the other is moved
@@ -131,7 +133,7 @@ BOOST_AUTO_TEST_CASE(test_graph_move_only) {
   auto [cg, ptr] = make_graph<std::unique_ptr<int>>();
   const auto g = finalize(std::move(cg), take(ptr));
 
-  BOOST_CHECK_EQUAL(5, execute_graph(g, SequentialExecutor{}, std::make_unique<int>(5)));
+  BOOST_CHECK_EQUAL(5, execute_graph(g, make_seq_executor(), std::make_unique<int>(5)));
 }
 
 BOOST_AUTO_TEST_CASE(test_graph_fwd) {
@@ -141,14 +143,14 @@ BOOST_AUTO_TEST_CASE(test_graph_fwd) {
   auto [cg, s] = make_graph<Sentinal>();
   const auto g = finalize(std::move(cg), fwd(s));
 
-  const Sentinal result = execute_graph(g, SequentialExecutor{}, Sentinal{});
+  const Sentinal result = execute_graph(g, make_seq_executor(), Sentinal{});
 
   BOOST_CHECK_EQUAL(0, result.copies);
   BOOST_CHECK_EQUAL(3, result.moves);
 }
 
 BOOST_AUTO_TEST_CASE(test_graph_forwarded_ref) {
-  const SequentialExecutor executor;
+  const auto executor = make_seq_executor();
 
   auto [cg, inputs] = make_graph(make_type_properties(TypeList<const Sentinal&, const Sentinal&>{}));
 
@@ -188,7 +190,7 @@ BOOST_AUTO_TEST_CASE(test_graph_timing, *boost::unit_test::disabled()) {
 
   const auto g = std::move(cg).finalize(outputs).value();
 
-  TaskExecutor executor;
+  Executor executor = make_task_executor();
 
   std::vector<Promise> promises;
   std::vector<BorrowedFuture> inputs;
@@ -228,6 +230,8 @@ BOOST_AUTO_TEST_CASE(test_graph_timing, *boost::unit_test::disabled()) {
   for(std::thread& t : threads) {
     t.join();
   }
+
+  executor.wait();
 
   for(const auto& [string, time] : ordered_results) {
     fmt::print("({:05} ms) {}\n", std::chrono::duration_cast<std::chrono::microseconds>(time - start).count(), string);

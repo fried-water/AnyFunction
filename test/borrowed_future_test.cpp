@@ -8,7 +8,7 @@
 
 using namespace anyf;
 
-static const SequentialExecutor executor;
+static const Executor executor = make_seq_executor();
 
 BOOST_AUTO_TEST_CASE(borrowed_future_cleanup) {
   auto [p, f] = make_promise_future(executor);

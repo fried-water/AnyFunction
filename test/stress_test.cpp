@@ -42,7 +42,7 @@ auto create_graph(int depth) {
 BOOST_AUTO_TEST_CASE(stress_test, *boost::unit_test::disabled()) {
   const int depth = 12;
   const int num_executions = 100;
-  TaskExecutor executor;
+  auto executor = make_task_executor();
 
   fmt::print("Thread count: {}\n", std::thread::hardware_concurrency());
   fmt::print("Creating graph of size {}\n", ((1 << depth) * 2 - 1));
@@ -58,6 +58,8 @@ BOOST_AUTO_TEST_CASE(stress_test, *boost::unit_test::disabled()) {
   for(int i = 0; i < num_executions; i++) {
     result = execute_graph(g, executor, 1);
   }
+
+  executor.wait();
 
   fmt::print("Result is {}, {} executions took {}ms\n",
              result,

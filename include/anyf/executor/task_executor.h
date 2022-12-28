@@ -1,5 +1,7 @@
 #pragma once
 
+#include "anyf/executor.h"
+
 #include <atomic>
 #include <condition_variable>
 #include <deque>
@@ -66,17 +68,16 @@ public:
 };
 
 class TaskExecutor {
-  unsigned _count;
   std::vector<std::thread> _threads;
   std::vector<TaskQueue> _q;
   std::atomic<unsigned> _index = 0;
   std::atomic<unsigned> _in_flight = 1;
 
-  void run(unsigned i) {
+  void run(unsigned i, unsigned count) {
     while(_in_flight != 0) {
-      unsigned spin_count = std::max<unsigned>(64, _count);
+      unsigned spin_count = std::max<unsigned>(64, count);
       for(unsigned n = 0; n < spin_count; n++) {
-        auto opt_function = _q[(i + n) % _count].try_pop();
+        auto opt_function = _q[(i + n) % count].try_pop();
         if(opt_function) {
           (*opt_function)();
           _in_flight--;
@@ -94,31 +95,40 @@ class TaskExecutor {
 public:
   TaskExecutor() : TaskExecutor(std::thread::hardware_concurrency()) {}
 
-  explicit TaskExecutor(unsigned count) : _count(count), _q(_count) {
-    for(unsigned i = 0; i < _count; i++) {
-      _threads.emplace_back([this, i]() { run(i); });
+  explicit TaskExecutor(unsigned num_threads) : _q(num_threads) {
+    assert(num_threads > 0);
+    for(unsigned i = 0; i < num_threads; i++) {
+      _threads.emplace_back([this, i, num_threads]() { run(i, num_threads); });
     }
   }
 
-  ~TaskExecutor() {
+  // must be called before destroyed
+  void wait() {
     _in_flight--;
 
     for(auto& q : _q) q.done();
-
     for(auto& thread : _threads) thread.join();
+    _q.clear();
+    _threads.clear();
   }
 
+  ~TaskExecutor() { assert(_q.empty() && _threads.empty()); }
+
   template <typename F>
-  void operator()(F&& f) {
+  void run(F&& f) {
     _in_flight++;
     auto i = _index++;
 
     const int K = 5;
-    for(unsigned n = 0; n < _count * K; n++) {
-      if(_q[(i + n) % _count].try_push(std::forward<F>(f))) return;
+    for(unsigned n = 0; n < _threads.size() * K; n++) {
+      if(_q[(i + n) % _threads.size()].try_push(std::forward<F>(f))) return;
     }
-    _q[i % _count].push(std::forward<F>(f));
+    _q[i % _threads.size()].push(std::forward<F>(f));
   }
 };
+
+inline Executor make_task_executor(unsigned num_threads = 0) {
+  return num_threads == 0 ? make_executor<TaskExecutor>() : make_executor<TaskExecutor>(num_threads);
+}
 
 } // namespace anyf

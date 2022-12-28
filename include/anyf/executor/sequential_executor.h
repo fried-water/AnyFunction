@@ -1,18 +1,19 @@
 #pragma once
 
+#include "anyf/executor.h"
+
 #include <utility>
 
 namespace anyf {
 
 struct SequentialExecutor {
-  SequentialExecutor() = default;
-  // To match other executor constructors that take num_threads
-  explicit SequentialExecutor(unsigned) {}
-
   template <typename F>
-  void operator()(F&& f) const {
-    std::forward<F>(f)();
+  void run(F f) {
+    f();
   }
+  void wait() {}
 };
+
+inline Executor make_seq_executor() { return make_executor<SequentialExecutor>(); }
 
 } // namespace anyf

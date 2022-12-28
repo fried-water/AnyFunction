@@ -51,9 +51,8 @@ struct FunctionTask {
       , input_ptrs(function.input_types().size()) {}
 };
 
-template <typename Executor>
 struct ExecutionCtx {
-  Executor* executor = nullptr;
+  Executor executor;
 
   // Storage for the results of all the functions,
   // First vector is the input values
@@ -67,20 +66,17 @@ struct ExecutionCtx {
   std::vector<Promise> outputs;
 };
 
-template <typename Executor>
-void execute_task(std::shared_ptr<ExecutionCtx<Executor>>& ctx, int idx);
+void execute_task(std::shared_ptr<ExecutionCtx>& ctx, int idx);
 
-template <typename Executor>
-void propagate_ref(std::shared_ptr<ExecutionCtx<Executor>>& ctx, Term dst, Any* value) {
+inline void propagate_ref(std::shared_ptr<ExecutionCtx>& ctx, Term dst, Any* value) {
   ctx->tasks[dst.node_id - 1]->input_ptrs[dst.port] = value;
 
   if(decrement(ctx->tasks[dst.node_id - 1]->ref_count)) {
-    (*ctx->executor)([ctx, i = dst.node_id - 1]() mutable { execute_task(ctx, i); });
+    ctx->executor.run([ctx, i = dst.node_id - 1]() mutable { execute_task(ctx, i); });
   }
 }
 
-template <typename Executor>
-void propagate_value(std::shared_ptr<ExecutionCtx<Executor>>& ctx, Term dst, Any value) {
+inline void propagate_value(std::shared_ptr<ExecutionCtx>& ctx, Term dst, Any value) {
   if(dst.node_id - 1 == ctx->tasks.size()) {
     std::move(ctx->outputs[dst.port]).send(std::move(value));
   } else {
@@ -89,8 +85,7 @@ void propagate_value(std::shared_ptr<ExecutionCtx<Executor>>& ctx, Term dst, Any
   }
 }
 
-template <typename Executor>
-void propogate_outputs(std::shared_ptr<ExecutionCtx<Executor>>& ctx, const ValueForward& fwd, Any& value) {
+inline void propogate_outputs(std::shared_ptr<ExecutionCtx>& ctx, const ValueForward& fwd, Any& value) {
   for(int i = 0; i < fwd.copy_end; i++) {
     propagate_value(ctx, fwd.terms[i], value);
   }
@@ -104,8 +99,7 @@ void propogate_outputs(std::shared_ptr<ExecutionCtx<Executor>>& ctx, const Value
   }
 }
 
-template <typename Executor>
-void execute_task(std::shared_ptr<ExecutionCtx<Executor>>& ctx, int idx) {
+inline void execute_task(std::shared_ptr<ExecutionCtx>& ctx, int idx) {
   ctx->results[idx + 1] = ctx->tasks[idx]->function(ctx->tasks[idx]->input_ptrs);
 
   // Drop reference to all borrowed inputs so they can be forwarded asap
@@ -132,11 +126,10 @@ void execute_task(std::shared_ptr<ExecutionCtx<Executor>>& ctx, int idx) {
   }
 }
 
-template <typename Executor>
-std::vector<Future> execute_graph(const FunctionGraph& g,
-                                  Executor& executor,
-                                  std::vector<Future> inputs,
-                                  std::vector<BorrowedFuture> borrowed_inputs) {
+inline std::vector<Future> execute_graph(const FunctionGraph& g,
+                                         Executor executor,
+                                         std::vector<Future> inputs,
+                                         std::vector<BorrowedFuture> borrowed_inputs) {
   check(inputs.size() + borrowed_inputs.size() == input_types(g).size(),
         "expected {} inputs given {} + {}",
         input_types(g).size(),
@@ -146,7 +139,7 @@ std::vector<Future> execute_graph(const FunctionGraph& g,
   const size_t num_inputs = input_types(g).size();
   const size_t num_outputs = output_types(g).size();
 
-  auto ctx = std::make_shared<ExecutionCtx<Executor>>(ExecutionCtx<Executor>{&executor});
+  auto ctx = std::make_shared<ExecutionCtx>(ExecutionCtx{std::move(executor)});
 
   ctx->results.resize(g.size() - 1);
   ctx->fwds.resize(g.size() - 1);
@@ -206,7 +199,7 @@ std::vector<Future> execute_graph(const FunctionGraph& g,
   ctx->outputs.reserve(num_outputs);
 
   for(size_t i = 0; i < num_outputs; i++) {
-    auto [p, f] = make_promise_future(*ctx->executor);
+    auto [p, f] = make_promise_future(ctx->executor);
     ctx->outputs.push_back(std::move(p));
     results.push_back(std::move(f));
   }
@@ -214,7 +207,7 @@ std::vector<Future> execute_graph(const FunctionGraph& g,
   // Determine 0 input tasks to launch immediately
   for(size_t i = 1; i < g.size() - 1; i++) {
     if(ctx->tasks[i - 1]->function.input_types().empty()) {
-      (*ctx->executor)([ctx, i = i - 1]() mutable { execute_task(ctx, i); });
+      ctx->executor.run([ctx, i = i - 1]() mutable { execute_task(ctx, i); });
     }
   }
 
@@ -240,14 +233,11 @@ std::vector<Future> execute_graph(const FunctionGraph& g,
   return results;
 }
 
-template <typename Executor>
-std::vector<Any> execute_graph(const FunctionGraph& g, Executor&& executor, std::vector<Any> inputs) {
+inline std::vector<Any> execute_graph(const FunctionGraph& g, Executor executor, std::vector<Any> inputs) {
   std::vector<Future> input_futures;
   std::vector<BorrowedFuture> borrowed_input_futures;
 
-  const auto num_inputs = input_types(g).size();
-
-  for(size_t i = 0; i < num_inputs; i++) {
+  for(size_t i = 0; i < input_types(g).size(); i++) {
     Future f(executor, std::move(inputs[i]));
     if(input_types(g)[i].value) {
       input_futures.push_back(std::move(f));
@@ -257,7 +247,7 @@ std::vector<Any> execute_graph(const FunctionGraph& g, Executor&& executor, std:
   }
 
   std::vector<Future> result_futures =
-    execute_graph(g, executor, std::move(input_futures), std::move(borrowed_input_futures));
+    execute_graph(g, std::move(executor), std::move(input_futures), std::move(borrowed_input_futures));
 
   std::vector<Any> results;
   results.reserve(result_futures.size());
@@ -268,9 +258,9 @@ std::vector<Any> execute_graph(const FunctionGraph& g, Executor&& executor, std:
   return results;
 }
 
-template <typename... Outputs, typename Executor, typename... Inputs>
+template <typename... Outputs, typename... Inputs>
 auto execute_graph(const StaticFunctionGraph<TypeList<Outputs...>, TypeList<std::decay_t<Inputs>...>>& g,
-                   Executor&& executor,
+                   Executor executor,
                    Inputs&&... inputs) {
   return apply_range<sizeof...(Outputs)>(
     execute_graph(g, std::move(executor), make_vector<Any>(std::forward<Inputs>(inputs)...)),
