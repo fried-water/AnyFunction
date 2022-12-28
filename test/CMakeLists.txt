@@ -20,7 +20,4 @@ add_executable(anyf_test
 target_link_libraries(anyf_test PRIVATE any_function ${Boost_UNIT_TEST_FRAMEWORK_LIBRARY})
 target_include_directories(anyf_test PRIVATE test)
 
-target_compile_options(anyf_test PRIVATE -Og -g -fsanitize=address)
-target_link_options(anyf_test PRIVATE -Og -g -fsanitize=address)
-
 add_test(NAME AnyFunctionUnitTests COMMAND anyf_test)
