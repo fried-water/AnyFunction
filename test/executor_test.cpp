@@ -108,6 +108,28 @@ BOOST_AUTO_TEST_CASE(example_graph_seq, *boost::unit_test::disabled()) {
   execute_graph_with_threads(create_graph(), [](int) { return make_seq_executor(); });
 }
 
+BOOST_AUTO_TEST_CASE(test_graph_direct) {
+  auto [cg, s] = make_graph<int>();
+  const auto g = finalize(std::move(cg), s);
+  BOOST_CHECK_EQUAL(7, execute_graph(g, make_seq_executor(), 7));
+}
+
+BOOST_AUTO_TEST_CASE(test_graph_value) {
+  const auto take = Delayed([](int i) { return i; });
+
+  auto [cg, s] = make_graph<int>();
+  const auto g = finalize(std::move(cg), take(s));
+  BOOST_CHECK_EQUAL(7, execute_graph(g, make_seq_executor(), 7));
+}
+
+BOOST_AUTO_TEST_CASE(test_graph_ref) {
+  const auto take_ref = Delayed([](const int& i) { return i; });
+
+  auto [cg, s] = make_graph<int>();
+  const auto g = finalize(std::move(cg), take_ref(s));
+  BOOST_CHECK_EQUAL(7, execute_graph(g, make_seq_executor(), 7));
+}
+
 BOOST_AUTO_TEST_CASE(test_graph_input_sentinal) {
   const auto take = Delayed([](Sentinal sent) { return sent; });
 
@@ -177,7 +199,7 @@ BOOST_AUTO_TEST_CASE(test_graph_timing, *boost::unit_test::disabled()) {
   const std::vector<TypeProperties> input_types(COUNT, make_type_properties(Type<const std::string&>{}));
   auto [cg, input_terms] = make_graph(input_types);
 
-  std::vector<Term> outputs;
+  std::vector<Oterm> outputs;
 
   for(size_t i = 0; i < COUNT; i++) {
     outputs.push_back(cg.add(AnyFunction{[=](const std::string& s) {

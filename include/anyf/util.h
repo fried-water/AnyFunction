@@ -4,7 +4,6 @@
 
 #include <fmt/core.h>
 
-#include <array>
 #include <optional>
 #include <tuple>
 #include <utility>
@@ -16,6 +15,7 @@ template <class... Ts>
 struct Overloaded : Ts... {
   using Ts::operator()...;
 };
+
 template <class... Ts>
 Overloaded(Ts...) -> Overloaded<Ts...>;
 

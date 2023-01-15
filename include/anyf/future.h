@@ -50,7 +50,7 @@ public:
     return *this;
   }
 
-  void send(Any&& value) && {
+  void send(Any value) && {
     _block->value = std::move(value);
 
     std::unique_lock lk(_block->mutex);

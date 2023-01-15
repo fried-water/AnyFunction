@@ -10,7 +10,7 @@ namespace anyf {
 template <typename T>
 struct DelayedEdge {
   ConstructingGraph* cg;
-  Term term;
+  Oterm term;
 };
 
 template <typename... Outputs, typename T, typename... Inputs>
@@ -25,7 +25,7 @@ auto add_to_graph(T&& func, DelayedEdge<Inputs>... edges) {
 }
 
 template <typename Outputs, typename Inputs>
-class StaticFunctionGraph;
+struct StaticFunctionGraph;
 
 template <typename... Outputs, typename... Inputs>
 struct StaticFunctionGraph<TypeList<Outputs...>, TypeList<Inputs...>> : FunctionGraph {
@@ -37,8 +37,7 @@ class StaticConstructingGraph;
 
 template <typename... Inputs>
 struct StaticConstructingGraph<TypeList<Inputs...>> {
-  std::unique_ptr<ConstructingGraph> cg =
-    std::make_unique<ConstructingGraph>(make_type_properties(TypeList<Inputs...>{}));
+  std::unique_ptr<ConstructingGraph> cg;
 };
 
 template <typename Outputs, typename Inputs>
@@ -65,19 +64,22 @@ template <typename F>
 Delayed(F f) -> Delayed<decltype(decay(return_types(Type<F>{}))), decltype(decay(args(Type<F>{})))>;
 
 template <typename... Outputs, size_t... Is>
-std::tuple<DelayedEdge<Outputs>...> output_edges(ConstructingGraph* cg, std::index_sequence<Is...>) {
-  return {{cg, {0, static_cast<int>(Is)}}...};
+std::tuple<DelayedEdge<Outputs>...>
+output_edges(ConstructingGraph* cg, const std::vector<Oterm>& terms, std::index_sequence<Is...>) {
+  return {{cg, terms[Is]}...};
 }
 
 template <typename... Inputs>
 std::tuple<StaticConstructingGraph<TypeList<Inputs...>>, DelayedEdge<Inputs>...> make_graph() {
   static_assert(sizeof...(Inputs) > 0);
-  StaticConstructingGraph<TypeList<Inputs...>> g;
 
-  ConstructingGraph* cg = g.cg.get();
+  auto [cg, terms] = make_graph(make_type_properties(TypeList<Inputs...>{}));
+  StaticConstructingGraph<TypeList<Inputs...>> g{std::make_unique<ConstructingGraph>(std::move(cg))};
+
+  ConstructingGraph* cg_ptr = g.cg.get();
 
   return std::tuple_cat(std::tuple(std::move(g)),
-                        output_edges<Inputs...>(cg, std::make_index_sequence<sizeof...(Inputs)>()));
+                        output_edges<Inputs...>(cg_ptr, terms, std::make_index_sequence<sizeof...(Inputs)>()));
 }
 
 template <typename... Outputs, typename... Inputs>

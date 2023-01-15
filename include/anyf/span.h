@@ -22,7 +22,7 @@ public:
   Span(const T* begin, const T* end) : _begin(begin), _end(end) {}
   Span(const T* begin, std::size_t count) : _begin(begin), _end(begin + count) {}
 
-  template<typename Range, typename = std::enable_if_t<std::is_same_v<T, typename std::decay_t<Range>::value_type>>>
+  template <typename Range, typename = std::enable_if_t<std::is_same_v<T, typename std::decay_t<Range>::value_type>>>
   Span(Range&& rng) : _begin(std::data(rng)), _end(std::data(rng) + rng.size()) {}
 
   Span(std::initializer_list<T> il) : _begin(std::data(il)), _end(std::data(il) + il.size()) {}

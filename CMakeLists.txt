@@ -14,6 +14,7 @@ add_subdirectory(ext/knot)
 add_subdirectory(ext/expected)
 
 add_library(any_function STATIC
+  src/graph.cpp
   src/graph_execution.cpp)
 
 target_compile_features(any_function PUBLIC cxx_std_17)

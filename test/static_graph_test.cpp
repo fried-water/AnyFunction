@@ -2,54 +2,46 @@
 
 #include <boost/test/unit_test.hpp>
 
-#include <algorithm>
+namespace anyf {
+namespace {
 
-using namespace anyf;
+int identity(int x) { return x; };
+int cidentity(const int& x) { return x; };
+int sum(int x, int y) { return x + y; };
 
-int identity(int x) { return x; }
-int cidentity(const int& x) { return x; }
-int by2(const int& x) { return x * 2; }
-auto sum(int x, int y) { return x + y; }
-
-bool compare_edges_to_nodes(const std::vector<Edge>& expected, const Node& actual) {
-  return std::equal(expected.begin(), expected.end(), actual.outputs.begin(), actual.outputs.end());
+bool eq_without_function(const FunctionGraph& x, const FunctionGraph& y) {
+  return x.input_types == y.input_types && x.output_types == y.output_types && x.owned_fwds == y.owned_fwds &&
+         x.input_borrowed_fwds == y.input_borrowed_fwds && x.input_counts == y.input_counts;
 }
 
-bool compare_nodes(const Node& expected, const Node& actual) { return expected.outputs == actual.outputs; }
+} // namespace
 
 BOOST_AUTO_TEST_CASE(simple_graph) {
   auto [cg, in1, in2] = make_graph<int, int>();
   const auto g = finalize(std::move(cg), Delayed(sum)(Delayed(cidentity)(in1), in2));
 
-  const std::vector<std::vector<Edge>> expected_edges{{{0, {1, 0}}, {1, {2, 1}}}, {{0, {2, 0}}}, {{0, {3, 0}}}, {}};
+  auto [e_cg, inputs] = make_graph(make_type_properties(TypeList<int, int>{}));
+  const auto outputs =
+    e_cg.add(AnyFunction(sum), {e_cg.add(AnyFunction(cidentity), {inputs[0]}).value()[0], inputs[1]});
+  const auto exp = std::move(e_cg).finalize(outputs.value()).value();
 
-  BOOST_CHECK(std::equal(expected_edges.begin(), expected_edges.end(), g.begin(), g.end(), compare_edges_to_nodes));
-}
-
-BOOST_AUTO_TEST_CASE(inside_empty_graph) {
-  auto [inner_cg, in3, in4] = make_graph<int, int>();
-  const auto inner_g =
-    finalize(std::move(inner_cg), Delayed(identity)(Delayed(by2)(Delayed(sum)(Delayed(cidentity)(in3), in4))));
-
-  auto [cg, in1, in2] = make_graph<int, int>();
-  const auto g = finalize(std::move(cg), inner_g(in1, in2));
-
-  BOOST_CHECK(std::equal(inner_g.begin(), inner_g.end(), g.begin(), g.end(), compare_nodes));
+  BOOST_CHECK(eq_without_function(exp, g));
 }
 
 BOOST_AUTO_TEST_CASE(inner_graph) {
+  auto [inner_cg, iin1, iin2] = make_graph<int, int>();
+  const auto inner_g = finalize(std::move(inner_cg), Delayed(sum)(Delayed(cidentity)(iin1), iin2));
+
   auto [cg, in1, in2] = make_graph<int, int>();
+  const auto g = finalize(std::move(cg), inner_g(Delayed(identity)(in1), Delayed(cidentity)(in2)));
 
-  DelayedEdge<int> id = Delayed(identity)(in1);
-  DelayedEdge<int> cid = Delayed(cidentity)(in2);
+  auto [e_cg, inputs] = make_graph(make_type_properties(TypeList<int, int>{}));
+  const auto outputs = e_cg.add(inner_g,
+                                {e_cg.add(AnyFunction(identity), {inputs[0]}).value()[0],
+                                 e_cg.add(AnyFunction(cidentity), {inputs[1]}).value()[0]});
+  const auto exp = std::move(e_cg).finalize(outputs.value()).value();
 
-  auto [inner_cg, in3, in4] = make_graph<int, int>();
-  const auto inner_g = finalize(std::move(inner_cg), Delayed(sum)(Delayed(cidentity)(in3), in4));
-
-  const auto g = finalize(std::move(cg), inner_g(id, cid));
-
-  const std::vector<std::vector<Edge>> expected_edges{
-    {{0, {1, 0}}, {1, {2, 0}}}, {{0, {3, 0}}}, {{0, {4, 1}}}, {{0, {4, 0}}}, {{0, {5, 0}}}, {}};
-
-  BOOST_CHECK(std::equal(expected_edges.begin(), expected_edges.end(), g.begin(), g.end(), compare_edges_to_nodes));
+  BOOST_CHECK(eq_without_function(exp, g));
 }
+
+} // namespace anyf
