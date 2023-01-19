@@ -12,7 +12,7 @@
 #include <numeric>
 #include <random>
 
-using namespace anyf;
+namespace anyf {
 
 namespace {
 
@@ -128,6 +128,32 @@ BOOST_AUTO_TEST_CASE(test_graph_ref) {
   auto [cg, s] = make_graph<int>();
   const auto g = finalize(std::move(cg), take_ref(s));
   BOOST_CHECK_EQUAL(7, execute_graph(g, make_seq_executor(), 7));
+}
+
+BOOST_AUTO_TEST_CASE(test_graph_while) {
+  const auto body = [](int x, const int& limit) { return std::tuple(x + 1 < limit, x + 1); };
+
+  auto [cg, inputs] = make_graph(make_type_properties(TypeList<bool, int, const int&>{}));
+  const auto g = *std::move(cg).finalize(*cg.add_while(make_graph(AnyFunction(body)), inputs));
+
+  auto ex = make_seq_executor();
+
+  std::vector<Future> owned_inputs;
+  owned_inputs.push_back(Future(ex, Any(true)));
+  owned_inputs.push_back(Future(ex, Any(5)));
+
+  std::vector<BorrowedFuture> borrowed_inputs;
+  borrowed_inputs.push_back(borrow(Future(ex, Any(10))).first);
+
+  auto outputs = execute_graph(g, ex, std::move(owned_inputs), std::move(borrowed_inputs));
+  BOOST_CHECK_EQUAL(10, any_cast<int>(std::move(outputs.front()).wait()));
+
+  owned_inputs.push_back(Future(ex, Any(false)));
+  owned_inputs.push_back(Future(ex, Any(7)));
+  borrowed_inputs.push_back(borrow(Future(ex, Any(10))).first);
+
+  outputs = execute_graph(g, ex, std::move(owned_inputs), std::move(borrowed_inputs));
+  BOOST_CHECK_EQUAL(7, any_cast<int>(std::move(outputs.front()).wait()));
 }
 
 BOOST_AUTO_TEST_CASE(test_graph_input_sentinal) {
@@ -259,3 +285,5 @@ BOOST_AUTO_TEST_CASE(test_graph_timing, *boost::unit_test::disabled()) {
     fmt::print("({:05} ms) {}\n", std::chrono::duration_cast<std::chrono::microseconds>(time - start).count(), string);
   }
 }
+
+} // namespace anyf

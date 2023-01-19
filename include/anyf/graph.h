@@ -70,6 +70,10 @@ struct ValueForward {
   KNOT_ORDERED(ValueForward);
 };
 
+struct WhileExpr;
+
+using Expr = std::variant<std::shared_ptr<const AnyFunction>, WhileExpr>;
+
 struct FunctionGraph {
   std::vector<TypeProperties> input_types;
   std::vector<TypeID> output_types;
@@ -78,7 +82,11 @@ struct FunctionGraph {
   std::vector<ValueForward> input_borrowed_fwds;
 
   std::vector<std::pair<int, int>> input_counts;
-  std::vector<std::shared_ptr<const AnyFunction>> functions;
+  std::vector<Expr> exprs;
+};
+
+struct WhileExpr {
+  std::shared_ptr<const FunctionGraph> body;
 };
 
 class ConstructingGraph {
@@ -94,14 +102,18 @@ public:
   ConstructingGraph(ConstructingGraph&&);
   ConstructingGraph& operator=(ConstructingGraph&&);
 
-  tl::expected<std::vector<Oterm>, GraphError> add(AnyFunction, Span<Oterm> inputs);
-  tl::expected<std::vector<Oterm>, GraphError> add(const FunctionGraph&, Span<Oterm> inputs);
+  tl::expected<std::vector<Oterm>, GraphError> add(AnyFunction, Span<Oterm>);
+  tl::expected<std::vector<Oterm>, GraphError> add(const FunctionGraph&, Span<Oterm>);
 
-  tl::expected<FunctionGraph, GraphError> finalize(Span<Oterm> outputs) &&;
+  tl::expected<std::vector<Oterm>, GraphError> add_while(const FunctionGraph&, Span<Oterm>);
+
+  tl::expected<FunctionGraph, GraphError> finalize(Span<Oterm>) &&;
 
   friend std::tuple<ConstructingGraph, std::vector<Oterm>> make_graph(std::vector<TypeProperties>);
 };
 
 std::tuple<ConstructingGraph, std::vector<Oterm>> make_graph(std::vector<TypeProperties> input_types);
+
+FunctionGraph make_graph(AnyFunction);
 
 } // namespace anyf

@@ -62,8 +62,16 @@ TypeProperties type(Span<TypeProperties> types, int port, bool is_value) {
 TypeProperties type(const FunctionGraph& g, Iterm t) {
   if(t.node_id == 0) {
     return type(g.input_types, t.port, t.value);
-  } else if(t.node_id <= g.functions.size()) {
-    return type(g.functions[t.node_id - 1]->input_types(), t.port, t.value);
+  } else if(t.node_id <= g.exprs.size()) {
+    return std::visit(
+      Overloaded{
+        [&](const std::shared_ptr<const AnyFunction>& f) { return type(f->input_types(), t.port, t.value); },
+        [&](const WhileExpr& w) {
+          return t.port == 0 && t.value ? TypeProperties{type_id<bool>(), true}
+                                        : type(w.body->input_types, t.value ? t.port - 1 : t.port, t.value);
+        },
+      },
+      g.exprs[t.node_id - 1]);
   } else {
     assert(t.value);
     return {g.output_types[t.port], true};
@@ -73,9 +81,17 @@ TypeProperties type(const FunctionGraph& g, Iterm t) {
 TypeProperties type(const FunctionGraph& g, Oterm t) {
   if(t.node_id == 0) {
     return type(g.input_types, t.port, t.value);
-  } else if(t.node_id <= g.functions.size()) {
+  } else if(t.node_id <= g.exprs.size()) {
     assert(t.value);
-    return {g.functions[t.node_id - 1]->output_types()[t.port], true};
+    return std::visit(Overloaded{
+                        [&](const std::shared_ptr<const AnyFunction>& f) {
+                          return TypeProperties{f->output_types()[t.port], true};
+                        },
+                        [&](const WhileExpr& w) {
+                          return TypeProperties{w.body->output_types[t.port + 1], true};
+                        },
+                      },
+                      g.exprs[t.node_id - 1]);
   } else {
     assert(t.value);
     return {g.output_types[t.port], true};
@@ -139,8 +155,7 @@ void add_edges(FunctionGraph& g,
 
   for(int i = 0; i < inputs.ssize(); i++) {
     const Oterm oterm = inputs[i];
-    const Iterm iterm = {
-      int(g.functions.size()), input_types[i].value ? value_idx++ : borrow_idx++, input_types[i].value};
+    const Iterm iterm = {int(g.exprs.size()), input_types[i].value ? value_idx++ : borrow_idx++, input_types[i].value};
 
     if(type(g, iterm).value) {
       usage[oterm].values++;
@@ -176,10 +191,10 @@ tl::expected<std::vector<Oterm>, GraphError> ConstructingGraph::add(AnyFunction 
 
   const int num_outputs = int(f.output_types().size());
   _state->g.input_counts.push_back(counts(f.input_types()));
-  _state->g.functions.push_back(std::make_shared<const AnyFunction>(std::move(f)));
+  _state->g.exprs.push_back(std::make_shared<const AnyFunction>(std::move(f)));
   _state->g.owned_fwds.push_back(std::vector<ValueForward>(num_outputs));
 
-  return make_oterms(int(_state->g.functions.size()), num_outputs);
+  return make_oterms(int(_state->g.exprs.size()), num_outputs);
 }
 
 tl::expected<std::vector<Oterm>, GraphError> ConstructingGraph::add(const FunctionGraph& f, Span<Oterm> inputs) {
@@ -193,7 +208,7 @@ tl::expected<std::vector<Oterm>, GraphError> ConstructingGraph::add(const Functi
 
   const auto process_fwds = [&](Oterm fanin, const auto& input_terms, auto& output_terms) {
     for(Iterm fanout : input_terms) {
-      if(fanout.node_id == f.functions.size()) {
+      if(fanout.node_id == f.exprs.size()) {
         outputs[fanout.port] = fanin;
       } else {
         output_terms.push_back({fanout.node_id + offset, fanout.port, fanout.value});
@@ -210,9 +225,9 @@ tl::expected<std::vector<Oterm>, GraphError> ConstructingGraph::add(const Functi
     process_fwds(input, inner_fwd.terms, fwd_of(_state->g, input).terms);
   }
 
-  for(int n = 0; n < f.functions.size(); n++) {
+  for(int n = 0; n < f.exprs.size(); n++) {
     _state->g.input_counts.push_back(f.input_counts[n]);
-    _state->g.functions.push_back(f.functions[n]);
+    _state->g.exprs.push_back(f.exprs[n]);
     _state->g.owned_fwds.push_back(std::vector<ValueForward>(f.owned_fwds[n + 1].size()));
 
     for(int p = 0; p < f.owned_fwds[n + 1].size(); p++) {
@@ -221,6 +236,26 @@ tl::expected<std::vector<Oterm>, GraphError> ConstructingGraph::add(const Functi
   }
 
   return outputs;
+}
+
+tl::expected<std::vector<Oterm>, GraphError> ConstructingGraph::add_while(const FunctionGraph& f, Span<Oterm> inputs) {
+  std::vector<TypeProperties> input_types;
+  input_types.reserve(f.input_types.size() + 1);
+  input_types.push_back(TypeProperties{type_id<bool>(), true});
+  input_types.insert(input_types.end(), f.input_types.begin(), f.input_types.end());
+
+  if(const auto check_failure = check_types(_state->g, _state->usage, input_types, inputs); check_failure) {
+    return tl::unexpected{*check_failure};
+  }
+
+  add_edges(_state->g, _state->usage, inputs, input_types);
+
+  const int num_outputs = int(f.output_types.size() - 1);
+  _state->g.input_counts.push_back(counts(input_types));
+  _state->g.exprs.push_back(WhileExpr{std::make_shared<const FunctionGraph>(f)});
+  _state->g.owned_fwds.push_back(std::vector<ValueForward>(num_outputs));
+
+  return make_oterms(int(_state->g.exprs.size()), num_outputs);
 }
 
 tl::expected<FunctionGraph, GraphError> ConstructingGraph::finalize(Span<Oterm> outputs) && {
@@ -260,6 +295,11 @@ tl::expected<FunctionGraph, GraphError> ConstructingGraph::finalize(Span<Oterm> 
 std::tuple<ConstructingGraph, std::vector<Oterm>> make_graph(std::vector<TypeProperties> types) {
   std::vector<Oterm> terms = make_oterms(0, types);
   return {ConstructingGraph{std::move(types)}, std::move(terms)};
+}
+
+FunctionGraph make_graph(AnyFunction f) {
+  auto [cg, inputs] = make_graph(f.input_types());
+  return *std::move(cg).finalize(*cg.add(std::move(f), inputs));
 }
 
 std::string msg(const GraphError& e) {

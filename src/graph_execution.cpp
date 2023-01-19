@@ -18,11 +18,20 @@ struct InvocationBlock {
 
   std::vector<Promise> promises;
 
-  InvocationBlock(int num_inputs, std::vector<BorrowedFuture> borrowed_inputs)
+  InvocationBlock(int num_inputs, std::vector<BorrowedFuture> borrowed_inputs, std::vector<Promise> promises)
       : ref_count(num_inputs)
       , input_vals(num_inputs)
       , input_ptrs(num_inputs)
-      , borrowed_inputs(std::move(borrowed_inputs)) {}
+      , borrowed_inputs(std::move(borrowed_inputs))
+      , promises(std::move(promises)) {}
+};
+
+struct WhileBlock {
+  Executor e;
+  WhileExpr w;
+  std::vector<Future> owned_inputs;
+  std::vector<BorrowedFuture> borrowed_inputs;
+  std::vector<Promise> promises;
 };
 
 struct InputState {
@@ -30,25 +39,20 @@ struct InputState {
   std::vector<std::vector<BorrowedFuture>> borrowed_inputs;
 };
 
-std::vector<Future> invoke_async(Executor e,
-                                 const std::shared_ptr<const AnyFunction>& func,
-                                 std::vector<Future> inputs,
-                                 std::vector<BorrowedFuture> borrowed_inputs) {
+int num_outputs(const Expr& e) {
+  return int(std::visit(Overloaded{[](const std::shared_ptr<const AnyFunction>& f) { return f->output_types().size(); },
+                                   [](const WhileExpr& e) { return e.body->output_types.size() - 1; }},
+                        e));
+}
+
+void invoke_async(Executor e,
+                  const std::shared_ptr<const AnyFunction>& func,
+                  std::vector<Promise> promises,
+                  std::vector<Future> inputs,
+                  std::vector<BorrowedFuture> borrowed_inputs) {
   const int num_inputs = int(func->input_types().size());
-  const int num_outputs = int(func->output_types().size());
 
-  auto block = std::make_shared<InvocationBlock>(num_inputs, std::move(borrowed_inputs));
-
-  std::vector<Future> futures;
-
-  block->promises.reserve(num_outputs);
-  futures.reserve(num_outputs);
-
-  for(size_t i = 0; i < num_outputs; i++) {
-    auto [p, f] = make_promise_future(e);
-    block->promises.push_back(std::move(p));
-    futures.push_back(std::move(f));
-  }
+  auto block = std::make_shared<InvocationBlock>(num_inputs, std::move(borrowed_inputs), std::move(promises));
 
   const auto try_invoke = [=](auto& block) {
     if(decrement(block->ref_count) == 1) {
@@ -80,8 +84,23 @@ std::vector<Future> invoke_async(Executor e,
       });
     }
   }
+}
 
-  return futures;
+void invoke_async(Future cond, WhileBlock* b) {
+  std::move(cond).then([b](Any cond) {
+    if(any_cast<bool>(cond)) {
+      auto res = execute_graph(*b->w.body, b->e, std::move(b->owned_inputs), b->borrowed_inputs);
+      b->owned_inputs =
+        std::vector<Future>(std::make_move_iterator(res.begin() + 1), std::make_move_iterator(res.end()));
+      invoke_async(std::move(res.front()), b);
+    } else {
+      for(int i = 0; i < b->owned_inputs.size(); i++) {
+        std::move(b->owned_inputs[i]).then([i, b](Any a) mutable { std::move(b->promises[i]).send(std::move(a)); });
+      }
+
+      delete b;
+    }
+  });
 }
 
 InputState propagate(InputState s, Executor e, const std::vector<ValueForward>& fwds, std::vector<Future> outputs) {
@@ -169,7 +188,7 @@ std::vector<Future> execute_graph(const FunctionGraph& g,
                                   std::vector<BorrowedFuture> borrowed_inputs) {
   InputState s;
   s.inputs.reserve(g.owned_fwds.size());
-  s.borrowed_inputs.reserve(g.functions.size());
+  s.borrowed_inputs.reserve(g.exprs.size());
 
   for(const auto& [owned, borrowed] : g.input_counts) {
     s.inputs.push_back(std::vector<Future>(owned));
@@ -182,10 +201,38 @@ std::vector<Future> execute_graph(const FunctionGraph& g,
   s = propagate(std::move(s), executor, g.owned_fwds.front(), std::move(inputs));
   s = propagate(std::move(s), executor, g.input_borrowed_fwds, std::move(borrowed_inputs));
 
-  for(int i = 0; i < int(g.functions.size()); i++) {
-    std::vector<Future> results =
-      invoke_async(executor, g.functions[i], std::move(s.inputs[i]), std::move(s.borrowed_inputs[i]));
-    s = propagate(std::move(s), executor, g.owned_fwds[i + 1], std::move(results));
+  for(int i = 0; i < int(g.exprs.size()); i++) {
+    const int count = num_outputs(g.exprs[i]);
+
+    std::vector<Promise> promises;
+    std::vector<Future> futures;
+
+    promises.reserve(count);
+    futures.reserve(count);
+
+    for(int i = 0; i < count; i++) {
+      auto [p, f] = make_promise_future(executor);
+      promises.push_back(std::move(p));
+      futures.push_back(std::move(f));
+    }
+
+    std::visit(
+      Overloaded{[&](const auto& f) {
+                   invoke_async(
+                     executor, f, std::move(promises), std::move(s.inputs[i]), std::move(s.borrowed_inputs[i]));
+                 },
+                 [&](const WhileExpr& e) {
+                   invoke_async(std::move(s.inputs[i].front()),
+                                new WhileBlock{executor,
+                                               e,
+                                               std::vector<Future>(std::make_move_iterator(s.inputs[i].begin() + 1),
+                                                                   std::make_move_iterator(s.inputs[i].end())),
+                                               std::move(s.borrowed_inputs[i]),
+                                               std::move(promises)});
+                 }},
+      g.exprs[i]);
+
+    s = propagate(std::move(s), executor, g.owned_fwds[i + 1], std::move(futures));
   }
 
   return std::move(s.inputs.back());
