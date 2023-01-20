@@ -10,6 +10,8 @@ namespace anyf {
 namespace {
 
 struct InvocationBlock {
+  std::shared_ptr<const AnyFunction> f;
+
   std::atomic<int> ref_count;
 
   std::vector<Any> input_vals;
@@ -18,10 +20,13 @@ struct InvocationBlock {
 
   std::vector<Promise> promises;
 
-  InvocationBlock(int num_inputs, std::vector<BorrowedFuture> borrowed_inputs, std::vector<Promise> promises)
-      : ref_count(num_inputs)
-      , input_vals(num_inputs)
-      , input_ptrs(num_inputs)
+  InvocationBlock(std::shared_ptr<const AnyFunction> f_,
+                  std::vector<BorrowedFuture> borrowed_inputs,
+                  std::vector<Promise> promises)
+      : f(std::move(f_))
+      , ref_count(f->input_types().size())
+      , input_vals(f->input_types().size())
+      , input_ptrs(f->input_types().size())
       , borrowed_inputs(std::move(borrowed_inputs))
       , promises(std::move(promises)) {}
 };
@@ -45,18 +50,15 @@ int num_outputs(const Expr& e) {
                         e));
 }
 
-void invoke_async(Executor e,
-                  const std::shared_ptr<const AnyFunction>& func,
+void invoke_async(const std::shared_ptr<const AnyFunction>& f,
                   std::vector<Promise> promises,
                   std::vector<Future> inputs,
                   std::vector<BorrowedFuture> borrowed_inputs) {
-  const int num_inputs = int(func->input_types().size());
+  InvocationBlock* block = new InvocationBlock(f, std::move(borrowed_inputs), std::move(promises));
 
-  auto block = std::make_shared<InvocationBlock>(num_inputs, std::move(borrowed_inputs), std::move(promises));
-
-  const auto try_invoke = [=](auto& block) {
+  const auto try_invoke = [](InvocationBlock* block) {
     if(decrement(block->ref_count) == 1) {
-      auto results = (*func)(block->input_ptrs);
+      auto results = (*block->f)(block->input_ptrs);
 
       // Drop reference to all borrowed inputs so they can be forwarded asap
       block->borrowed_inputs.clear();
@@ -65,13 +67,15 @@ void invoke_async(Executor e,
       for(size_t i = 0; i < results.size(); i++) {
         std::move(block->promises[i]).send(std::move(results[i]));
       }
+
+      delete block;
     }
   };
 
   int owned_offset = 0;
   int borrowed_offset = 0;
-  for(size_t i = 0; i < num_inputs; i++) {
-    if(func->input_types()[i].value) {
+  for(size_t i = 0; i < f->input_types().size(); i++) {
+    if(f->input_types()[i].value) {
       std::move(inputs[owned_offset++]).then([=](Any value) mutable {
         block->input_vals[i] = std::move(value);
         block->input_ptrs[i] = &block->input_vals[i];
@@ -126,24 +130,26 @@ InputState propagate(InputState s, Executor e, const std::vector<ValueForward>& 
       }
 
       // move_only_function pls :(
-      auto lambda_state = std::make_shared<std::pair<std::vector<Promise>, std::optional<Promise>>>(
-        std::move(copy_promises), std::move(move_promise));
-      std::move(outputs[i]).then([s = std::move(lambda_state)](Any a) mutable {
-        for(Promise& p : s->first) std::move(p).send(a);
-        if(s->second) {
-          std::move(*s->second).send(std::move(a));
+      auto lambda_state =
+        new std::pair<std::vector<Promise>, std::optional<Promise>>(std::move(copy_promises), std::move(move_promise));
+      std::move(outputs[i]).then([=](Any a) mutable {
+        for(Promise& p : lambda_state->first) std::move(p).send(a);
+        if(lambda_state->second) {
+          std::move(*lambda_state->second).send(std::move(a));
         }
+        delete lambda_state;
       });
     } else {
       auto [borrowed_promise, f2] = make_promise_future(e);
       auto [borrowed_future, move_future] = borrow(std::move(f2));
 
       // move_only_function pls :(
-      auto lambda_state = std::make_shared<std::pair<std::vector<Promise>, Promise>>(std::move(copy_promises),
-                                                                                     std::move(borrowed_promise));
-      std::move(outputs[i]).then([s = std::move(lambda_state)](Any a) mutable {
-        for(Promise& p : s->first) std::move(p).send(a);
-        std::move(s->second).send(std::move(a));
+      auto lambda_state =
+        new std::pair<std::vector<Promise>, Promise>(std::move(copy_promises), std::move(borrowed_promise));
+      std::move(outputs[i]).then([=](Any a) mutable {
+        for(Promise& p : lambda_state->first) std::move(p).send(a);
+        std::move(lambda_state->second).send(std::move(a));
+        delete lambda_state;
       });
 
       for(int i = fwd.move_end; i < fwd.terms.size(); i++) {
@@ -218,8 +224,7 @@ std::vector<Future> execute_graph(const FunctionGraph& g,
 
     std::visit(
       Overloaded{[&](const auto& f) {
-                   invoke_async(
-                     executor, f, std::move(promises), std::move(s.inputs[i]), std::move(s.borrowed_inputs[i]));
+                   invoke_async(f, std::move(promises), std::move(s.inputs[i]), std::move(s.borrowed_inputs[i]));
                  },
                  [&](const WhileExpr& e) {
                    invoke_async(std::move(s.inputs[i].front()),
