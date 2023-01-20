@@ -53,29 +53,11 @@ std::pair<int, int> counts(Span<TypeProperties> types) {
 
 TypeProperties type(Span<TypeProperties> types, int port, bool is_value) {
   auto it = std::find_if(types.begin(), types.end(), [&](auto t) { return t.value == is_value; });
-  while(port-- > 0) {
+  while(port-- > 0 && it != types.end()) {
     it = std::find_if(it + 1, types.end(), [&](auto t) { return t.value == is_value; });
   }
+  assert(it != types.end());
   return *it;
-}
-
-TypeProperties type(const FunctionGraph& g, Iterm t) {
-  if(t.node_id == 0) {
-    return type(g.input_types, t.port, t.value);
-  } else if(t.node_id <= g.exprs.size()) {
-    return std::visit(
-      Overloaded{
-        [&](const std::shared_ptr<const AnyFunction>& f) { return type(f->input_types(), t.port, t.value); },
-        [&](const WhileExpr& w) {
-          return t.port == 0 && t.value ? TypeProperties{type_id<bool>(), true}
-                                        : type(w.body->input_types, t.value ? t.port - 1 : t.port, t.value);
-        },
-      },
-      g.exprs[t.node_id - 1]);
-  } else {
-    assert(t.value);
-    return {g.output_types[t.port], true};
-  }
 }
 
 TypeProperties type(const FunctionGraph& g, Oterm t) {
@@ -157,7 +139,7 @@ void add_edges(FunctionGraph& g,
     const Oterm oterm = inputs[i];
     const Iterm iterm = {int(g.exprs.size()), input_types[i].value ? value_idx++ : borrow_idx++, input_types[i].value};
 
-    if(type(g, iterm).value) {
+    if(input_types[i].value) {
       usage[oterm].values++;
     } else {
       usage[oterm].borrows++;
