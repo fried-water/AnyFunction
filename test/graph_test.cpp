@@ -273,4 +273,11 @@ BOOST_AUTO_TEST_CASE(err_ref_offset) {
   BOOST_CHECK((GraphError{BadType{1, type_id<int>(), type_id<char>()}} == error));
 }
 
+BOOST_AUTO_TEST_CASE(mismatched_branch_types) {
+  auto [cg, inputs] = make_graph(make_type_properties(TypeList<int>{}));
+  const auto error =
+    cg.add_if(make_graph(AnyFunction{[](int x) { return x; }}), make_graph(AnyFunction{[]() {}}), inputs).error();
+  BOOST_CHECK((GraphError{MismatchedBranchTypes{}} == error));
+}
+
 } // namespace anyf

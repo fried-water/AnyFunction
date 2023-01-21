@@ -42,7 +42,11 @@ struct CannotCopy {
   KNOT_ORDERED(CannotCopy);
 };
 
-using GraphError = std::variant<BadArity, BadType, AlreadyMoved, CannotCopy>;
+struct MismatchedBranchTypes {
+  KNOT_ORDERED(MismatchedBranchTypes);
+};
+
+using GraphError = std::variant<BadArity, BadType, AlreadyMoved, CannotCopy, MismatchedBranchTypes>;
 
 std::string msg(const GraphError& e);
 

@@ -234,8 +234,9 @@ tl::expected<std::vector<Oterm>, GraphError> ConstructingGraph::add(const Functi
 
 tl::expected<std::vector<Oterm>, GraphError>
 ConstructingGraph::add_if(const FunctionGraph& if_branch, const FunctionGraph& else_branch, Span<Oterm> inputs) {
-  assert(if_branch.input_types == else_branch.input_types);
-  assert(if_branch.output_types == else_branch.output_types);
+  if(if_branch.input_types != else_branch.input_types || if_branch.output_types != else_branch.output_types) {
+    return tl::unexpected{GraphError{MismatchedBranchTypes{}}};
+  }
 
   std::vector<TypeProperties> input_types;
   input_types.reserve(if_branch.input_types.size() + 1);
@@ -313,10 +314,12 @@ int num_outputs(const Expr& e) {
 
 std::string msg(const GraphError& e) {
   return std::visit(
-    Overloaded{[](const BadArity& e) { return fmt::format("Expected {} arguments, given {}", e.expected, e.given); },
-               [](const BadType& e) { return fmt::format("Incorrect type for argument {}", e.index); },
-               [](const AlreadyMoved& e) { return fmt::format("Value for argument {} already moved", e.index); },
-               [](const CannotCopy& e) { return fmt::format("Input argument {} cannot be copied moved", e.index); }},
+    Overloaded{
+      [](const BadArity& e) { return fmt::format("Expected {} arguments, given {}", e.expected, e.given); },
+      [](const BadType& e) { return fmt::format("Incorrect type for argument {}", e.index); },
+      [](const AlreadyMoved& e) { return fmt::format("Value for argument {} already moved", e.index); },
+      [](const CannotCopy& e) { return fmt::format("Input argument {} cannot be copied moved", e.index); },
+      [](const MismatchedBranchTypes&) { return fmt::format("If and else branch graphs have different types"); }},
     e);
 }
 
