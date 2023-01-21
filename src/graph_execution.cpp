@@ -52,41 +52,48 @@ struct InputState {
   std::vector<std::vector<BorrowedFuture>> borrowed_inputs;
 };
 
-void invoke_async(const std::shared_ptr<const AnyFunction>& f,
+void invoke_async(Executor e,
+                  const std::shared_ptr<const AnyFunction>& f,
                   std::vector<Promise> promises,
                   std::vector<Future> inputs,
                   std::vector<BorrowedFuture> borrowed_inputs) {
   InvocationBlock* block = new InvocationBlock(f, std::move(borrowed_inputs), std::move(promises));
 
-  const auto try_invoke = [](InvocationBlock* block) {
-    if(decrement(block->ref_count) == 1) {
-      auto results = (*block->f)(block->input_ptrs);
+  const auto invoke = [](InvocationBlock* block) {
+    auto results = (*block->f)(block->input_ptrs);
 
-      // Drop reference to all borrowed inputs so they can be forwarded asap
-      block->borrowed_inputs.clear();
+    // Drop reference to all borrowed inputs so they can be forwarded asap
+    block->borrowed_inputs.clear();
 
-      // Forward outputs
-      for(size_t i = 0; i < results.size(); i++) {
-        std::move(block->promises[i]).send(std::move(results[i]));
-      }
-
-      delete block;
+    // Forward outputs
+    for(size_t i = 0; i < results.size(); i++) {
+      std::move(block->promises[i]).send(std::move(results[i]));
     }
+
+    delete block;
   };
+
+  if(f->input_types().empty()) {
+    e.run([block, invoke]() { invoke(block); });
+  }
 
   int owned_offset = 0;
   int borrowed_offset = 0;
   for(size_t i = 0; i < f->input_types().size(); i++) {
     if(f->input_types()[i].value) {
-      std::move(inputs[owned_offset++]).then([=](Any value) mutable {
+      std::move(inputs[owned_offset++]).then([i, block, invoke](Any value) mutable {
         block->input_vals[i] = std::move(value);
         block->input_ptrs[i] = &block->input_vals[i];
-        try_invoke(block);
+        if(decrement(block->ref_count) == 1) {
+          invoke(block);
+        }
       });
     } else {
-      block->borrowed_inputs[borrowed_offset++].then([i, block, try_invoke](const Any& value) {
+      block->borrowed_inputs[borrowed_offset++].then([i, block, invoke](const Any& value) {
         block->input_ptrs[i] = const_cast<Any*>(&value);
-        try_invoke(block);
+        if(decrement(block->ref_count) == 1) {
+          invoke(block);
+        }
       });
     }
   }
@@ -241,7 +248,8 @@ std::vector<Future> execute_graph(const FunctionGraph& g,
 
     std::visit(
       Overloaded{[&](const auto& f) {
-                   invoke_async(f, std::move(promises), std::move(s.inputs[i]), std::move(s.borrowed_inputs[i]));
+                   invoke_async(
+                     executor, f, std::move(promises), std::move(s.inputs[i]), std::move(s.borrowed_inputs[i]));
                  },
                  [&](const IfExpr& e) {
                    invoke_async(std::move(s.inputs[i].front()),

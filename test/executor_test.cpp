@@ -180,6 +180,16 @@ BOOST_AUTO_TEST_CASE(test_graph_if) {
   BOOST_CHECK_EQUAL(6, any_cast<int>(std::move(outputs.front()).wait()));
 }
 
+BOOST_AUTO_TEST_CASE(test_graph_zero_arg_function) {
+  const auto constant = []() { return 3; };
+
+  auto [cg, inputs] = make_graph(make_type_properties(TypeList<>{}));
+  const auto g = *std::move(cg).finalize(*cg.add(AnyFunction(constant), inputs));
+
+  auto outputs = execute_graph(g, make_seq_executor(), {}, {});
+  BOOST_CHECK_EQUAL(3, any_cast<int>(std::move(outputs.front()).wait()));
+}
+
 BOOST_AUTO_TEST_CASE(test_graph_input_sentinal) {
   const auto take = Delayed([](Sentinal sent) { return sent; });
 
