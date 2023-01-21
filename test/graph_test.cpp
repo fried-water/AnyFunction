@@ -209,6 +209,14 @@ BOOST_AUTO_TEST_CASE(oterm_type) {
   BOOST_CHECK(cg.type(outputs[1]) == (TypeProperties{type_id<float>(), true}));
 }
 
+BOOST_AUTO_TEST_CASE(graph_types) {
+  const AnyFunction f([](int x, const float& y) { return std::tuple(x, y); });
+  const auto g = make_graph(f);
+
+  BOOST_CHECK(f.input_types() == g.input_types());
+  BOOST_CHECK(f.output_types() == g.output_types());
+}
+
 BOOST_AUTO_TEST_CASE(add_empty_graph) {
   auto [inner_cg, inner_inputs] = make_graph(make_type_properties(TypeList<int>{}));
   const FunctionGraph inner_g = std::move(inner_cg).finalize(inner_inputs).value();

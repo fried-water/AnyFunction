@@ -327,6 +327,9 @@ ConstructingGraph::~ConstructingGraph() = default;
 ConstructingGraph::ConstructingGraph(ConstructingGraph&&) = default;
 ConstructingGraph& ConstructingGraph::operator=(ConstructingGraph&&) = default;
 
+Span<TypeProperties> FunctionGraph::input_types() const { return state->input_types; }
+Span<TypeID> FunctionGraph::output_types() const { return state->output_types; }
+
 FunctionGraph::~FunctionGraph() = default;
 
 } // namespace anyf

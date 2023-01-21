@@ -61,7 +61,11 @@ struct Oterm {
 struct FunctionGraph {
   struct State;
   std::shared_ptr<const State> state;
+
   ~FunctionGraph();
+
+  Span<TypeProperties> input_types() const;
+  Span<TypeID> output_types() const;
 };
 
 class ConstructingGraph {
