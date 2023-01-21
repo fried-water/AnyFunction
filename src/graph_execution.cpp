@@ -31,6 +31,14 @@ struct InvocationBlock {
       , promises(std::move(promises)) {}
 };
 
+struct IfBlock {
+  Executor e;
+  IfExpr expr;
+  std::vector<Future> owned_inputs;
+  std::vector<BorrowedFuture> borrowed_inputs;
+  std::vector<Promise> promises;
+};
+
 struct WhileBlock {
   Executor e;
   WhileExpr w;
@@ -43,12 +51,6 @@ struct InputState {
   std::vector<std::vector<Future>> inputs;
   std::vector<std::vector<BorrowedFuture>> borrowed_inputs;
 };
-
-int num_outputs(const Expr& e) {
-  return int(std::visit(Overloaded{[](const std::shared_ptr<const AnyFunction>& f) { return f->output_types().size(); },
-                                   [](const WhileExpr& e) { return e.body->output_types.size() - 1; }},
-                        e));
-}
 
 void invoke_async(const std::shared_ptr<const AnyFunction>& f,
                   std::vector<Promise> promises,
@@ -88,6 +90,21 @@ void invoke_async(const std::shared_ptr<const AnyFunction>& f,
       });
     }
   }
+}
+
+void invoke_async(Future cond, IfBlock* b) {
+  std::move(cond).then([b](Any cond) {
+    std::vector<Future> results = execute_graph(any_cast<bool>(cond) ? *b->expr.if_branch : *b->expr.else_branch,
+                                                b->e,
+                                                std::move(b->owned_inputs),
+                                                b->borrowed_inputs);
+
+    for(int i = 0; i < int(results.size()); i++) {
+      std::move(results[i]).then([i, b](Any a) mutable { std::move(b->promises[i]).send(std::move(a)); });
+    }
+
+    delete b;
+  });
 }
 
 void invoke_async(Future cond, WhileBlock* b) {
@@ -225,6 +242,15 @@ std::vector<Future> execute_graph(const FunctionGraph& g,
     std::visit(
       Overloaded{[&](const auto& f) {
                    invoke_async(f, std::move(promises), std::move(s.inputs[i]), std::move(s.borrowed_inputs[i]));
+                 },
+                 [&](const IfExpr& e) {
+                   invoke_async(std::move(s.inputs[i].front()),
+                                new IfBlock{executor,
+                                            e,
+                                            std::vector<Future>(std::make_move_iterator(s.inputs[i].begin() + 1),
+                                                                std::make_move_iterator(s.inputs[i].end())),
+                                            std::move(s.borrowed_inputs[i]),
+                                            std::move(promises)});
                  },
                  [&](const WhileExpr& e) {
                    invoke_async(std::move(s.inputs[i].front()),

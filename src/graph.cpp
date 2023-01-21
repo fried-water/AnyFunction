@@ -72,6 +72,9 @@ TypeProperties type(const FunctionGraph& g, Oterm t) {
                         [&](const WhileExpr& w) {
                           return TypeProperties{w.body->output_types[t.port + 1], true};
                         },
+                        [&](const IfExpr& i) {
+                          return TypeProperties{i.if_branch->output_types[t.port], true};
+                        },
                       },
                       g.exprs[t.node_id - 1]);
   } else {
@@ -92,7 +95,7 @@ auto& fwd_of(G& g, Oterm t) {
 
 std::optional<GraphError> check_types(const FunctionGraph& g,
                                       const std::unordered_map<Oterm, OtermUsage, knot::Hash>& usage,
-                                      const std::vector<TypeProperties>& expected_types,
+                                      Span<TypeProperties> expected_types,
                                       Span<Oterm> inputs) {
   if(inputs.size() != expected_types.size()) {
     return GraphError{BadArity{int(expected_types.size()), int(inputs.size())}};
@@ -162,21 +165,30 @@ ValueForward fixup_fwd(TypeProperties type, ValueForward fwd) {
   return fwd;
 }
 
-} // namespace
-
-tl::expected<std::vector<Oterm>, GraphError> ConstructingGraph::add(AnyFunction f, Span<Oterm> inputs) {
-  if(const auto check_failure = check_types(_state->g, _state->usage, f.input_types(), inputs); check_failure) {
+tl::expected<std::vector<Oterm>, GraphError> add_internal(FunctionGraph& g,
+                                                          std::unordered_map<Oterm, OtermUsage, knot::Hash>& usage,
+                                                          Expr expr,
+                                                          Span<Oterm> inputs,
+                                                          Span<TypeProperties> input_types) {
+  if(const auto check_failure = check_types(g, usage, input_types, inputs); check_failure) {
     return tl::unexpected{*check_failure};
   }
 
-  add_edges(_state->g, _state->usage, inputs, f.input_types());
+  add_edges(g, usage, inputs, input_types);
 
-  const int num_outputs = int(f.output_types().size());
-  _state->g.input_counts.push_back(counts(f.input_types()));
-  _state->g.exprs.push_back(std::make_shared<const AnyFunction>(std::move(f)));
-  _state->g.owned_fwds.push_back(std::vector<ValueForward>(num_outputs));
+  const int output_count = num_outputs(expr);
+  g.input_counts.push_back(counts(input_types));
+  g.exprs.push_back(std::move(expr));
+  g.owned_fwds.push_back(std::vector<ValueForward>(output_count));
 
-  return make_oterms(int(_state->g.exprs.size()), num_outputs);
+  return make_oterms(int(g.exprs.size()), output_count);
+}
+
+} // namespace
+
+tl::expected<std::vector<Oterm>, GraphError> ConstructingGraph::add(AnyFunction f, Span<Oterm> inputs) {
+  const auto shared_f = std::make_shared<const AnyFunction>(std::move(f));
+  return add_internal(_state->g, _state->usage, shared_f, inputs, shared_f->input_types());
 }
 
 tl::expected<std::vector<Oterm>, GraphError> ConstructingGraph::add(const FunctionGraph& f, Span<Oterm> inputs) {
@@ -220,24 +232,32 @@ tl::expected<std::vector<Oterm>, GraphError> ConstructingGraph::add(const Functi
   return outputs;
 }
 
+tl::expected<std::vector<Oterm>, GraphError>
+ConstructingGraph::add_if(const FunctionGraph& if_branch, const FunctionGraph& else_branch, Span<Oterm> inputs) {
+  assert(if_branch.input_types == else_branch.input_types);
+  assert(if_branch.output_types == else_branch.output_types);
+
+  std::vector<TypeProperties> input_types;
+  input_types.reserve(if_branch.input_types.size() + 1);
+  input_types.push_back(TypeProperties{type_id<bool>(), true});
+  input_types.insert(input_types.end(), if_branch.input_types.begin(), if_branch.input_types.end());
+
+  return add_internal(
+    _state->g,
+    _state->usage,
+    IfExpr{std::make_shared<const FunctionGraph>(if_branch), std::make_shared<const FunctionGraph>(else_branch)},
+    inputs,
+    input_types);
+}
+
 tl::expected<std::vector<Oterm>, GraphError> ConstructingGraph::add_while(const FunctionGraph& f, Span<Oterm> inputs) {
   std::vector<TypeProperties> input_types;
   input_types.reserve(f.input_types.size() + 1);
   input_types.push_back(TypeProperties{type_id<bool>(), true});
   input_types.insert(input_types.end(), f.input_types.begin(), f.input_types.end());
 
-  if(const auto check_failure = check_types(_state->g, _state->usage, input_types, inputs); check_failure) {
-    return tl::unexpected{*check_failure};
-  }
-
-  add_edges(_state->g, _state->usage, inputs, input_types);
-
-  const int num_outputs = int(f.output_types.size() - 1);
-  _state->g.input_counts.push_back(counts(input_types));
-  _state->g.exprs.push_back(WhileExpr{std::make_shared<const FunctionGraph>(f)});
-  _state->g.owned_fwds.push_back(std::vector<ValueForward>(num_outputs));
-
-  return make_oterms(int(_state->g.exprs.size()), num_outputs);
+  return add_internal(
+    _state->g, _state->usage, WhileExpr{std::make_shared<const FunctionGraph>(f)}, inputs, input_types);
 }
 
 tl::expected<FunctionGraph, GraphError> ConstructingGraph::finalize(Span<Oterm> outputs) && {
@@ -282,6 +302,13 @@ std::tuple<ConstructingGraph, std::vector<Oterm>> make_graph(std::vector<TypePro
 FunctionGraph make_graph(AnyFunction f) {
   auto [cg, inputs] = make_graph(f.input_types());
   return *std::move(cg).finalize(*cg.add(std::move(f), inputs));
+}
+
+int num_outputs(const Expr& e) {
+  return int(std::visit(Overloaded{[](const std::shared_ptr<const AnyFunction>& f) { return f->output_types().size(); },
+                                   [](const WhileExpr& e) { return e.body->output_types.size() - 1; },
+                                   [](const IfExpr& e) { return e.if_branch->output_types.size(); }},
+                        e));
 }
 
 std::string msg(const GraphError& e) {

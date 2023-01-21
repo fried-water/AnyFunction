@@ -70,9 +70,10 @@ struct ValueForward {
   KNOT_ORDERED(ValueForward);
 };
 
+struct IfExpr;
 struct WhileExpr;
 
-using Expr = std::variant<std::shared_ptr<const AnyFunction>, WhileExpr>;
+using Expr = std::variant<std::shared_ptr<const AnyFunction>, IfExpr, WhileExpr>;
 
 struct FunctionGraph {
   std::vector<TypeProperties> input_types;
@@ -83,6 +84,11 @@ struct FunctionGraph {
 
   std::vector<std::pair<int, int>> input_counts;
   std::vector<Expr> exprs;
+};
+
+struct IfExpr {
+  std::shared_ptr<const FunctionGraph> if_branch;
+  std::shared_ptr<const FunctionGraph> else_branch;
 };
 
 struct WhileExpr {
@@ -105,6 +111,7 @@ public:
   tl::expected<std::vector<Oterm>, GraphError> add(AnyFunction, Span<Oterm>);
   tl::expected<std::vector<Oterm>, GraphError> add(const FunctionGraph&, Span<Oterm>);
 
+  tl::expected<std::vector<Oterm>, GraphError> add_if(const FunctionGraph&, const FunctionGraph&, Span<Oterm>);
   tl::expected<std::vector<Oterm>, GraphError> add_while(const FunctionGraph&, Span<Oterm>);
 
   tl::expected<FunctionGraph, GraphError> finalize(Span<Oterm>) &&;
@@ -115,5 +122,7 @@ public:
 std::tuple<ConstructingGraph, std::vector<Oterm>> make_graph(std::vector<TypeProperties> input_types);
 
 FunctionGraph make_graph(AnyFunction);
+
+int num_outputs(const Expr&);
 
 } // namespace anyf

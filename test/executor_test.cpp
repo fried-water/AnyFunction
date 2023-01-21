@@ -156,6 +156,30 @@ BOOST_AUTO_TEST_CASE(test_graph_while) {
   BOOST_CHECK_EQUAL(7, any_cast<int>(std::move(outputs.front()).wait()));
 }
 
+BOOST_AUTO_TEST_CASE(test_graph_if) {
+  const auto identity = [](int x) { return x; };
+  const auto add1 = [](int x) { return x + 1; };
+
+  auto [cg, inputs] = make_graph(make_type_properties(TypeList<bool, int>{}));
+  const auto g =
+    *std::move(cg).finalize(*cg.add_if(make_graph(AnyFunction(identity)), make_graph(AnyFunction(add1)), inputs));
+
+  auto ex = make_seq_executor();
+
+  std::vector<Future> owned_inputs;
+  owned_inputs.push_back(Future(ex, Any(true)));
+  owned_inputs.push_back(Future(ex, Any(5)));
+
+  auto outputs = execute_graph(g, ex, std::move(owned_inputs), {});
+  BOOST_CHECK_EQUAL(5, any_cast<int>(std::move(outputs.front()).wait()));
+
+  owned_inputs.push_back(Future(ex, Any(false)));
+  owned_inputs.push_back(Future(ex, Any(5)));
+
+  outputs = execute_graph(g, ex, std::move(owned_inputs), {});
+  BOOST_CHECK_EQUAL(6, any_cast<int>(std::move(outputs.front()).wait()));
+}
+
 BOOST_AUTO_TEST_CASE(test_graph_input_sentinal) {
   const auto take = Delayed([](Sentinal sent) { return sent; });
 
