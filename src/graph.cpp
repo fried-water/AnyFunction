@@ -186,6 +186,8 @@ tl::expected<std::vector<Oterm>, GraphError> add_internal(FunctionGraph& g,
 
 } // namespace
 
+TypeProperties ConstructingGraph::type(Oterm oterm) { return anyf::type(_state->g, oterm); }
+
 tl::expected<std::vector<Oterm>, GraphError> ConstructingGraph::add(AnyFunction f, Span<Oterm> inputs) {
   const auto shared_f = std::make_shared<const AnyFunction>(std::move(f));
   return add_internal(_state->g, _state->usage, shared_f, inputs, shared_f->input_types());
@@ -266,7 +268,7 @@ tl::expected<FunctionGraph, GraphError> ConstructingGraph::finalize(Span<Oterm> 
 
   _state->g.output_types.reserve(outputs.size());
   std::transform(outputs.begin(), outputs.end(), std::back_inserter(_state->g.output_types), [&](Oterm t) {
-    return type(_state->g, t).id;
+    return anyf::type(_state->g, t).id;
   });
 
   std::vector<TypeProperties> props;
@@ -283,13 +285,14 @@ tl::expected<FunctionGraph, GraphError> ConstructingGraph::finalize(Span<Oterm> 
 
   for(int i = 0; i < int(_state->g.owned_fwds.size()); i++) {
     for(int p = 0; p < int(_state->g.owned_fwds[i].size()); p++) {
-      _state->g.owned_fwds[i][p] = fixup_fwd(type(_state->g, Oterm{i, p, true}), std::move(_state->g.owned_fwds[i][p]));
+      _state->g.owned_fwds[i][p] =
+        fixup_fwd(anyf::type(_state->g, Oterm{i, p, true}), std::move(_state->g.owned_fwds[i][p]));
     }
   }
 
   for(int i = 0; i < int(_state->g.input_borrowed_fwds.size()); i++) {
     _state->g.input_borrowed_fwds[i] =
-      fixup_fwd(type(_state->g, Oterm{0, i, false}), std::move(_state->g.input_borrowed_fwds[i]));
+      fixup_fwd(anyf::type(_state->g, Oterm{0, i, false}), std::move(_state->g.input_borrowed_fwds[i]));
   }
 
   return std::move(_state->g);

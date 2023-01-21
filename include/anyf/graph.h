@@ -112,6 +112,8 @@ public:
   ConstructingGraph(ConstructingGraph&&);
   ConstructingGraph& operator=(ConstructingGraph&&);
 
+  TypeProperties type(Oterm);
+
   tl::expected<std::vector<Oterm>, GraphError> add(AnyFunction, Span<Oterm>);
   tl::expected<std::vector<Oterm>, GraphError> add(const FunctionGraph&, Span<Oterm>);
 
