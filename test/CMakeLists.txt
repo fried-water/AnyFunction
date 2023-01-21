@@ -18,6 +18,6 @@ add_executable(anyf_test
   )
 
 target_link_libraries(anyf_test PRIVATE any_function ${Boost_UNIT_TEST_FRAMEWORK_LIBRARY})
-target_include_directories(anyf_test PRIVATE test)
+target_include_directories(anyf_test PRIVATE . ../src)
 
 add_test(NAME AnyFunctionUnitTests COMMAND anyf_test)

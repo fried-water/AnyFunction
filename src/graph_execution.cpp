@@ -1,5 +1,7 @@
 #include "anyf/graph_execution.h"
 
+#include "graph_inner.h"
+
 #include <algorithm>
 #include <atomic>
 #include <memory>
@@ -101,7 +103,7 @@ void invoke_async(Executor e,
 
 void invoke_async(Future cond, IfBlock* b) {
   std::move(cond).then([b](Any cond) {
-    std::vector<Future> results = execute_graph(any_cast<bool>(cond) ? *b->expr.if_branch : *b->expr.else_branch,
+    std::vector<Future> results = execute_graph(any_cast<bool>(cond) ? b->expr.if_branch : b->expr.else_branch,
                                                 b->e,
                                                 std::move(b->owned_inputs),
                                                 b->borrowed_inputs);
@@ -117,7 +119,7 @@ void invoke_async(Future cond, IfBlock* b) {
 void invoke_async(Future cond, WhileBlock* b) {
   std::move(cond).then([b](Any cond) {
     if(any_cast<bool>(cond)) {
-      auto res = execute_graph(*b->w.body, b->e, std::move(b->owned_inputs), b->borrowed_inputs);
+      auto res = execute_graph(b->w.body, b->e, std::move(b->owned_inputs), b->borrowed_inputs);
       b->owned_inputs =
         std::vector<Future>(std::make_move_iterator(res.begin() + 1), std::make_move_iterator(res.end()));
       invoke_async(std::move(res.front()), b);
@@ -212,10 +214,12 @@ propagate(InputState s, Executor e, const std::vector<ValueForward>& fwds, std::
 
 } // namespace
 
-std::vector<Future> execute_graph(const FunctionGraph& g,
+std::vector<Future> execute_graph(const FunctionGraph& g_outer,
                                   Executor executor,
                                   std::vector<Future> inputs,
                                   std::vector<BorrowedFuture> borrowed_inputs) {
+  const FunctionGraph::State& g = *g_outer.state;
+
   InputState s;
   s.inputs.reserve(g.owned_fwds.size());
   s.borrowed_inputs.reserve(g.exprs.size());
@@ -281,9 +285,9 @@ std::vector<Any> execute_graph(const FunctionGraph& g, Executor executor, std::v
   std::vector<Future> input_futures;
   std::vector<BorrowedFuture> borrowed_input_futures;
 
-  for(size_t i = 0; i < g.input_types.size(); i++) {
+  for(size_t i = 0; i < g.state->input_types.size(); i++) {
     Future f(executor, std::move(inputs[i]));
-    if(g.input_types[i].value) {
+    if(g.state->input_types[i].value) {
       input_futures.push_back(std::move(f));
     } else {
       borrowed_input_futures.push_back(borrow(std::move(f)).first);

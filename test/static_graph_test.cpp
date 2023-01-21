@@ -1,4 +1,5 @@
 #include "anyf/static_graph.h"
+#include "graph_inner.h"
 
 #include <boost/test/unit_test.hpp>
 
@@ -9,9 +10,12 @@ int identity(int x) { return x; };
 int cidentity(const int& x) { return x; };
 int sum(int x, int y) { return x + y; };
 
-bool eq_without_function(const FunctionGraph& x, const FunctionGraph& y) {
-  return x.input_types == y.input_types && x.output_types == y.output_types && x.owned_fwds == y.owned_fwds &&
-         x.input_borrowed_fwds == y.input_borrowed_fwds && x.input_counts == y.input_counts;
+bool eq_without_function(const FunctionGraph& exp, const FunctionGraph& act) {
+  const auto tie = [](const FunctionGraph::State& g) {
+    return std::tie(g.input_types, g.output_types, g.owned_fwds, g.input_borrowed_fwds, g.input_counts);
+  };
+
+  return tie(*exp.state) == tie(*act.state);
 }
 
 } // namespace

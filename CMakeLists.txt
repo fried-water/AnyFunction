@@ -18,7 +18,7 @@ add_library(any_function STATIC
   src/graph_execution.cpp)
 
 target_compile_features(any_function PUBLIC cxx_std_17)
-target_include_directories(any_function PUBLIC include)
+target_include_directories(any_function PUBLIC include PRIVATE src)
 target_link_libraries(any_function PUBLIC tbb fmt knot expected)
 
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)

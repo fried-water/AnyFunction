@@ -50,14 +50,6 @@ using GraphError = std::variant<BadArity, BadType, AlreadyMoved, CannotCopy, Mis
 
 std::string msg(const GraphError& e);
 
-struct Iterm {
-  int node_id = 0;
-  int port = 0;
-  bool value = false;
-
-  KNOT_ORDERED(Iterm);
-};
-
 struct Oterm {
   int node_id = 0;
   int port = 0;
@@ -66,37 +58,10 @@ struct Oterm {
   KNOT_ORDERED(Oterm);
 };
 
-struct ValueForward {
-  std::vector<Iterm> terms;
-  int copy_end = 0;
-  int move_end = 0;
-
-  KNOT_ORDERED(ValueForward);
-};
-
-struct IfExpr;
-struct WhileExpr;
-
-using Expr = std::variant<std::shared_ptr<const AnyFunction>, IfExpr, WhileExpr>;
-
 struct FunctionGraph {
-  std::vector<TypeProperties> input_types;
-  std::vector<TypeID> output_types;
-
-  std::vector<std::vector<ValueForward>> owned_fwds;
-  std::vector<ValueForward> input_borrowed_fwds;
-
-  std::vector<std::pair<int, int>> input_counts;
-  std::vector<Expr> exprs;
-};
-
-struct IfExpr {
-  std::shared_ptr<const FunctionGraph> if_branch;
-  std::shared_ptr<const FunctionGraph> else_branch;
-};
-
-struct WhileExpr {
-  std::shared_ptr<const FunctionGraph> body;
+  struct State;
+  std::shared_ptr<const State> state;
+  ~FunctionGraph();
 };
 
 class ConstructingGraph {
@@ -117,8 +82,8 @@ public:
   tl::expected<std::vector<Oterm>, GraphError> add(AnyFunction, Span<Oterm>);
   tl::expected<std::vector<Oterm>, GraphError> add(const FunctionGraph&, Span<Oterm>);
 
-  tl::expected<std::vector<Oterm>, GraphError> add_if(const FunctionGraph&, const FunctionGraph&, Span<Oterm>);
-  tl::expected<std::vector<Oterm>, GraphError> add_while(const FunctionGraph&, Span<Oterm>);
+  tl::expected<std::vector<Oterm>, GraphError> add_if(FunctionGraph, FunctionGraph, Span<Oterm>);
+  tl::expected<std::vector<Oterm>, GraphError> add_while(FunctionGraph, Span<Oterm>);
 
   tl::expected<FunctionGraph, GraphError> finalize(Span<Oterm>) &&;
 
@@ -128,7 +93,5 @@ public:
 std::tuple<ConstructingGraph, std::vector<Oterm>> make_graph(std::vector<TypeProperties> input_types);
 
 FunctionGraph make_graph(AnyFunction);
-
-int num_outputs(const Expr&);
 
 } // namespace anyf
