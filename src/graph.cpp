@@ -215,10 +215,10 @@ tl::expected<std::vector<Oterm>, GraphError> ConstructingGraph::add(const Functi
   int value_idx = 0;
   int borrow_idx = 0;
 
-  for(const Oterm input : inputs) {
-    const ValueForward& inner_fwd = input.value ? g.owned_fwds[0][value_idx++] : g.input_borrowed_fwds[borrow_idx++];
-
-    process_fwds(input, inner_fwd.terms, fwd_of(_state->g, input).terms);
+  for(int i = 0; i < inputs.size(); i++) {
+    const ValueForward& inner_fwd =
+      g.input_types[i].value ? g.owned_fwds[0][value_idx++] : g.input_borrowed_fwds[borrow_idx++];
+    process_fwds(inputs[i], inner_fwd.terms, fwd_of(_state->g, inputs[i]).terms);
   }
 
   for(int n = 0; n < g.exprs.size(); n++) {

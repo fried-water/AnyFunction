@@ -170,6 +170,35 @@ BOOST_AUTO_TEST_CASE(single_ref_alternate_fwd) {
   BOOST_CHECK(eq_without_function(exp, g));
 }
 
+BOOST_AUTO_TEST_CASE(single_ref_as_value) {
+  auto [cg, inputs] = make_graph(make_type_properties(TypeList<int>{}));
+
+  const auto id_outputs = *cg.add(AnyFunction([](const int&) { return 0; }), std::array{inputs[0]});
+  const FunctionGraph g = std::move(cg).finalize({id_outputs[0]}).value();
+
+  const FunctionGraph::State exp{
+    {{type_id<int>(), true}}, {type_id<int>()}, {{{{{0, 0, false}}, 0, 0}}, {{{{{1, 0, true}}, 0, 1}}}}, {}, {{0, 1}}};
+
+  BOOST_CHECK(eq_without_function(exp, g));
+}
+
+BOOST_AUTO_TEST_CASE(single_ref_as_value_graph) {
+  auto [inner_cg, inner_inputs] = make_graph(make_type_properties(TypeList<const int&>{}));
+
+  const auto id_inner_outputs = *inner_cg.add(AnyFunction([](const int&) { return 0; }), std::array{inner_inputs[0]});
+  const FunctionGraph inner_g = std::move(inner_cg).finalize({id_inner_outputs[0]}).value();
+
+  auto [cg, inputs] = make_graph(make_type_properties(TypeList<int>{}));
+
+  const auto id_outputs = *cg.add(inner_g, std::array{inputs[0]});
+  const FunctionGraph g = std::move(cg).finalize({id_outputs[0]}).value();
+
+  const FunctionGraph::State exp{
+    {{type_id<int>(), true}}, {type_id<int>()}, {{{{{0, 0, false}}, 0, 0}}, {{{{{1, 0, true}}, 0, 1}}}}, {}, {{0, 1}}};
+
+  BOOST_CHECK(eq_without_function(exp, g));
+}
+
 // TODO detect circular ref/moves
 BOOST_AUTO_TEST_CASE(single_move_only_fwd_ref) {
   auto [cg, inputs] = make_graph(make_type_properties(TypeList<MoveOnly>{}));
