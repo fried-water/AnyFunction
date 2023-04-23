@@ -11,6 +11,8 @@ find_package(tbb REQUIRED)
 find_package(fmt REQUIRED)
 
 add_subdirectory(ext/knot)
+
+set(EXPECTED_BUILD_TESTS OFF)
 add_subdirectory(ext/expected)
 
 add_library(any_function STATIC
