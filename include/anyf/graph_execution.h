@@ -8,16 +8,16 @@
 
 namespace anyf {
 
-std::vector<Future> execute_graph(const FunctionGraph&, Executor, std::vector<Future>, std::vector<BorrowedFuture>);
+std::vector<Future> execute_graph(const FunctionGraph&, ExecutorRef, std::vector<Future>, std::vector<BorrowedFuture>);
 
-std::vector<Any> execute_graph(const FunctionGraph&, Executor, std::vector<Any>);
+std::vector<Any> execute_graph(const FunctionGraph&, ExecutorRef, std::vector<Any>);
 
 template <typename... Outputs, typename... Inputs>
 auto execute_graph(const StaticFunctionGraph<TypeList<Outputs...>, TypeList<std::decay_t<Inputs>...>>& g,
-                   Executor executor,
+                   ExecutorRef executor,
                    Inputs&&... inputs) {
   return apply_range<sizeof...(Outputs)>(
-    execute_graph(g, std::move(executor), make_vector<Any>(std::forward<Inputs>(inputs)...)),
+    execute_graph(g, executor, make_vector<Any>(std::forward<Inputs>(inputs)...)),
     [](auto&&... anys) { return tuple_or_value(any_cast<Outputs>(std::move(anys))...); });
 }
 

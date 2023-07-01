@@ -6,9 +6,9 @@
 #include <random>
 #include <thread>
 
-using namespace anyf;
+namespace anyf {
 
-static const Executor executor = make_seq_executor();
+static Executor executor = make_seq_executor();
 
 BOOST_AUTO_TEST_CASE(borrowed_future_cleanup) {
   auto [p, f] = make_promise_future(executor);
@@ -142,3 +142,5 @@ BOOST_AUTO_TEST_CASE(borrowed_future_stress) {
 
   BOOST_CHECK_EQUAL(functions.size() - count, calls.load());
 }
+
+} // namespace anyf

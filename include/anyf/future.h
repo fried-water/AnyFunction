@@ -19,19 +19,19 @@ struct SharedBlock {
   std::mutex mutex;
   std::condition_variable cv;
   std::optional<std::function<void(Any)>> continuation;
-  Executor executor;
+  ExecutorRef executor;
   std::atomic<int> value_ready;
 
-  SharedBlock(Any value, Executor executor, int ref_count = 0)
-      : value(std::move(value)), executor(std::move(executor)), value_ready(ref_count) {}
+  SharedBlock(Any value, ExecutorRef executor, int ref_count = 0)
+      : value(std::move(value)), executor(executor), value_ready(ref_count) {}
 
-  SharedBlock(Executor executor) : SharedBlock(Any{}, std::move(executor), 1) {}
+  SharedBlock(ExecutorRef executor) : SharedBlock(Any{}, executor, 1) {}
 };
 
 class Future;
 class Promise;
 
-std::pair<Promise, Future> make_promise_future(Executor);
+std::pair<Promise, Future> make_promise_future(ExecutorRef);
 
 class Promise {
 public:
@@ -74,7 +74,7 @@ public:
 private:
   std::shared_ptr<SharedBlock> _block;
 
-  friend std::pair<Promise, Future> make_promise_future(Executor);
+  friend std::pair<Promise, Future> make_promise_future(ExecutorRef);
 
   Promise(std::shared_ptr<SharedBlock> block) : _block(std::move(block)) {}
 };
@@ -83,7 +83,7 @@ class Future {
 public:
   Future() = default;
 
-  explicit Future(Executor executor, Any value)
+  explicit Future(ExecutorRef executor, Any value)
       : _block(std::make_shared<SharedBlock>(std::move(value), std::move(executor))) {}
 
   Future(const Future&) = delete;
@@ -157,12 +157,12 @@ public:
 private:
   std::shared_ptr<SharedBlock> _block;
 
-  friend std::pair<Promise, Future> make_promise_future(Executor);
+  friend std::pair<Promise, Future> make_promise_future(ExecutorRef);
 
   Future(std::shared_ptr<SharedBlock> block) : _block(std::move(block)) {}
 };
 
-inline std::pair<Promise, Future> make_promise_future(Executor executor) {
+inline std::pair<Promise, Future> make_promise_future(ExecutorRef executor) {
   auto block = std::make_shared<SharedBlock>(std::move(executor));
   return {Promise(block), Future(block)};
 }

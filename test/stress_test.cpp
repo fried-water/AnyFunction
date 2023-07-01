@@ -60,8 +60,6 @@ BOOST_AUTO_TEST_CASE(stress_test, *boost::unit_test::disabled()) {
     result = execute_graph(g, executor, 1);
   }
 
-  executor.wait();
-
   fmt::print("Result is {}, {} executions took {}ms\n",
              result,
              num_executions,
@@ -87,8 +85,6 @@ BOOST_AUTO_TEST_CASE(stress_test_if) {
     auto outputs = execute_graph(g, executor, std::move(owned_inputs), {});
     BOOST_CHECK_EQUAL(i % 2, any_cast<int>(std::move(outputs.front()).wait()));
   }
-
-  executor.wait();
 }
 
 BOOST_AUTO_TEST_CASE(stress_test_while) {
@@ -113,8 +109,6 @@ BOOST_AUTO_TEST_CASE(stress_test_while) {
     auto outputs = execute_graph(g, executor, std::move(owned_inputs), borrowed_inputs);
     BOOST_CHECK_EQUAL(limit, any_cast<int>(std::move(outputs.front()).wait()));
   }
-
-  executor.wait();
 }
 
 } // namespace anyf

@@ -102,17 +102,12 @@ public:
     }
   }
 
-  // must be called before destroyed
-  void wait() {
+  ~TaskExecutor() {
     _in_flight--;
 
     for(auto& q : _q) q.done();
     for(auto& thread : _threads) thread.join();
-    _q.clear();
-    _threads.clear();
   }
-
-  ~TaskExecutor() { assert(_q.empty() && _threads.empty()); }
 
   template <typename F>
   void run(F&& f) {

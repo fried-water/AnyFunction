@@ -11,7 +11,6 @@ struct SequentialExecutor {
   void run(F f) {
     f();
   }
-  void wait() {}
 };
 
 inline Executor make_seq_executor() { return make_executor<SequentialExecutor>(); }

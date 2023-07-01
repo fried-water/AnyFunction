@@ -34,7 +34,7 @@ struct InvocationBlock {
 };
 
 struct IfBlock {
-  Executor e;
+  ExecutorRef e;
   std::atomic<int> ref_count;
   IfExpr expr;
   std::vector<Future> owned_inputs;
@@ -43,7 +43,7 @@ struct IfBlock {
 };
 
 struct WhileBlock {
-  Executor e;
+  ExecutorRef e;
   std::atomic<int> ref_count;
   WhileExpr w;
   std::vector<Future> owned_inputs;
@@ -56,7 +56,7 @@ struct InputState {
   std::vector<std::vector<BorrowedFuture>> borrowed_inputs;
 };
 
-void invoke_async(Executor e,
+void invoke_async(ExecutorRef e,
                   const std::shared_ptr<const AnyFunction>& f,
                   std::vector<Promise> promises,
                   std::vector<Future> inputs,
@@ -145,7 +145,7 @@ void invoke_async(Future cond, WhileBlock* b) {
   });
 }
 
-InputState propagate(InputState s, Executor e, const std::vector<ValueForward>& fwds, std::vector<Future> outputs) {
+InputState propagate(InputState s, ExecutorRef e, const std::vector<ValueForward>& fwds, std::vector<Future> outputs) {
   assert(fwds.size() == outputs.size());
 
   for(int i = 0; i < int(fwds.size()); i++) {
@@ -205,7 +205,7 @@ InputState propagate(InputState s, Executor e, const std::vector<ValueForward>& 
 }
 
 InputState
-propagate(InputState s, Executor e, const std::vector<ValueForward>& fwds, std::vector<BorrowedFuture> outputs) {
+propagate(InputState s, ExecutorRef e, const std::vector<ValueForward>& fwds, std::vector<BorrowedFuture> outputs) {
   assert(fwds.size() == outputs.size());
   for(int i = 0; i < int(fwds.size()); i++) {
 
@@ -227,7 +227,7 @@ propagate(InputState s, Executor e, const std::vector<ValueForward>& fwds, std::
 } // namespace
 
 std::vector<Future> execute_graph(const FunctionGraph& g_outer,
-                                  Executor executor,
+                                  ExecutorRef executor,
                                   std::vector<Future> inputs,
                                   std::vector<BorrowedFuture> borrowed_inputs) {
   const FunctionGraph::State& g = *g_outer.state;
@@ -295,7 +295,7 @@ std::vector<Future> execute_graph(const FunctionGraph& g_outer,
   return std::move(s.inputs.back());
 }
 
-std::vector<Any> execute_graph(const FunctionGraph& g, Executor executor, std::vector<Any> inputs) {
+std::vector<Any> execute_graph(const FunctionGraph& g, ExecutorRef executor, std::vector<Any> inputs) {
   std::vector<Future> input_futures;
   std::vector<BorrowedFuture> borrowed_input_futures;
 
@@ -309,7 +309,7 @@ std::vector<Any> execute_graph(const FunctionGraph& g, Executor executor, std::v
   }
 
   std::vector<Future> result_futures =
-    execute_graph(g, std::move(executor), std::move(input_futures), std::move(borrowed_input_futures));
+    execute_graph(g, executor, std::move(input_futures), std::move(borrowed_input_futures));
 
   std::vector<Any> results;
   results.reserve(result_futures.size());

@@ -10,10 +10,10 @@ struct BorrowedSharedBlock {
   std::mutex mutex;
   std::condition_variable cv;
   std::vector<std::function<void(const Any&)>> continuations;
-  Executor executor;
+  ExecutorRef executor;
   bool value_ready = false;
 
-  BorrowedSharedBlock(Promise&& p, Executor executor) : promise(std::move(p)), executor(std::move(executor)) {}
+  BorrowedSharedBlock(Promise&& p, ExecutorRef executor) : promise(std::move(p)), executor(executor) {}
 
   ~BorrowedSharedBlock() { std::move(promise).send(std::move(value)); }
 };
