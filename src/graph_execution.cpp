@@ -35,6 +35,7 @@ struct InvocationBlock {
 
 struct IfBlock {
   Executor e;
+  std::atomic<int> ref_count;
   IfExpr expr;
   std::vector<Future> owned_inputs;
   std::vector<BorrowedFuture> borrowed_inputs;
@@ -43,6 +44,7 @@ struct IfBlock {
 
 struct WhileBlock {
   Executor e;
+  std::atomic<int> ref_count;
   WhileExpr w;
   std::vector<Future> owned_inputs;
   std::vector<BorrowedFuture> borrowed_inputs;
@@ -109,10 +111,13 @@ void invoke_async(Future cond, IfBlock* b) {
                                                 b->borrowed_inputs);
 
     for(int i = 0; i < int(results.size()); i++) {
-      std::move(results[i]).then([i, b](Any a) mutable { std::move(b->promises[i]).send(std::move(a)); });
+      std::move(results[i]).then([i, b](Any a) mutable {
+        std::move(b->promises[i]).send(std::move(a));
+        if(decrement(b->ref_count) == 1) {
+          delete b;
+        }
+      });
     }
-
-    delete b;
   });
 }
 
@@ -125,10 +130,17 @@ void invoke_async(Future cond, WhileBlock* b) {
       invoke_async(std::move(res.front()), b);
     } else {
       for(int i = 0; i < b->owned_inputs.size(); i++) {
-        std::move(b->owned_inputs[i]).then([i, b](Any a) mutable { std::move(b->promises[i]).send(std::move(a)); });
+        std::move(b->owned_inputs[i]).then([i, b](Any a) mutable {
+          std::move(b->promises[i]).send(std::move(a));
+          if(decrement(b->ref_count) == 1) {
+            delete b;
+          }
+        });
       }
 
-      delete b;
+      if(decrement(b->ref_count) == 1) {
+        delete b;
+      }
     }
   });
 }
@@ -258,6 +270,7 @@ std::vector<Future> execute_graph(const FunctionGraph& g_outer,
                  [&](const IfExpr& e) {
                    invoke_async(std::move(s.inputs[i].front()),
                                 new IfBlock{executor,
+                                            int(promises.size()),
                                             e,
                                             std::vector<Future>(std::make_move_iterator(s.inputs[i].begin() + 1),
                                                                 std::make_move_iterator(s.inputs[i].end())),
@@ -267,6 +280,7 @@ std::vector<Future> execute_graph(const FunctionGraph& g_outer,
                  [&](const WhileExpr& e) {
                    invoke_async(std::move(s.inputs[i].front()),
                                 new WhileBlock{executor,
+                                               int(promises.size()) + 1,
                                                e,
                                                std::vector<Future>(std::make_move_iterator(s.inputs[i].begin() + 1),
                                                                    std::make_move_iterator(s.inputs[i].end())),
