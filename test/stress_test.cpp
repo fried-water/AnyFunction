@@ -87,6 +87,24 @@ BOOST_AUTO_TEST_CASE(stress_test_if) {
   }
 }
 
+BOOST_AUTO_TEST_CASE(stress_test_select) {
+  const int num_executions = 100;
+  auto executor = make_task_executor();
+
+  auto [cg, inputs] = make_graph(make_type_properties(TypeList<bool, int, int>{}));
+  const auto g = *std::move(cg).finalize(*cg.add_select(inputs[0], {inputs[1]}, {inputs[2]}));
+
+  for(int i = 0; i < num_executions; i++) {
+    std::vector<Future> owned_inputs;
+    owned_inputs.push_back(Future(executor, Any(i % 2 == 0)));
+    owned_inputs.push_back(Future(executor, Any(0)));
+    owned_inputs.push_back(Future(executor, Any(1)));
+
+    auto outputs = execute_graph(g, executor, std::move(owned_inputs), {});
+    BOOST_CHECK_EQUAL(i % 2, any_cast<int>(std::move(outputs.front()).wait()));
+  }
+}
+
 BOOST_AUTO_TEST_CASE(stress_test_while) {
   const int num_executions = 100;
   auto executor = make_task_executor();

@@ -64,17 +64,16 @@ TypeProperties type(const FunctionGraph::State& g, Oterm t) {
     return type(g.input_types, t.port, t.value);
   } else if(t.node_id <= g.exprs.size()) {
     assert(t.value);
-    return std::visit(Overloaded{
-                        [&](const std::shared_ptr<const AnyFunction>& f) {
-                          return TypeProperties{f->output_types()[t.port], true};
-                        },
-                        [&](const WhileExpr& w) {
-                          return TypeProperties{w.body.state->output_types[t.port + 1], true};
-                        },
-                        [&](const IfExpr& i) {
-                          return TypeProperties{i.if_branch.state->output_types[t.port], true};
-                        },
-                      },
+    return std::visit(Overloaded{[&](const std::shared_ptr<const AnyFunction>& f) {
+                                   return TypeProperties{f->output_types()[t.port], true};
+                                 },
+                                 [&](const IfExpr& i) {
+                                   return TypeProperties{i.if_branch.state->output_types[t.port], true};
+                                 },
+                                 [&](const SelectExpr& s) { return s.types[t.port]; },
+                                 [&](const WhileExpr& w) {
+                                   return TypeProperties{w.body.state->output_types[t.port + 1], true};
+                                 }},
                       g.exprs[t.node_id - 1]);
   } else {
     assert(t.value);
@@ -248,6 +247,44 @@ ConstructingGraph::add_if(FunctionGraph if_branch, FunctionGraph else_branch, Sp
 
   return add_internal(
     _state->g, _state->usage, IfExpr{std::move(if_branch), std::move(else_branch)}, inputs, input_types);
+}
+
+tl::expected<std::vector<Oterm>, GraphError>
+ConstructingGraph::add_select(Oterm cond, Span<Oterm> if_branch, Span<Oterm> else_branch) {
+  if(if_branch.size() != else_branch.size()) {
+    return tl::unexpected{GraphError{MismatchedBranchTypes{}}};
+  }
+
+  std::vector<TypeProperties> types;
+  types.reserve(if_branch.size());
+  std::transform(if_branch.begin(), if_branch.end(), std::back_inserter(types), [&](Oterm o) { return type(o); });
+
+  for(size_t i = 0; i < if_branch.size(); i++) {
+    if(types[i] != type(else_branch[i])) {
+      return tl::unexpected{GraphError{MismatchedBranchTypes{}}};
+    }
+  }
+
+  std::vector<TypeProperties> input_types;
+  input_types.reserve(if_branch.size() * 2 + 1);
+
+  input_types.push_back({type_id<bool>(), true});
+  std::transform(types.begin(),
+                 types.end(),
+                 std::back_inserter(input_types),
+                 // TODO: allow select to return borrows
+                 [&](TypeProperties t) {
+                   return TypeProperties{t.id, true};
+                 });
+  input_types.insert(input_types.end(), input_types.begin() + 1, input_types.end());
+
+  std::vector<Oterm> inputs;
+  inputs.reserve(if_branch.size() * 2 + 1);
+  inputs.push_back(cond);
+  inputs.insert(inputs.end(), if_branch.begin(), if_branch.end());
+  inputs.insert(inputs.end(), else_branch.begin(), else_branch.end());
+
+  return add_internal(_state->g, _state->usage, SelectExpr{std::move(types)}, inputs, input_types);
 }
 
 tl::expected<std::vector<Oterm>, GraphError> ConstructingGraph::add_while(FunctionGraph g, Span<Oterm> inputs) {

@@ -25,11 +25,15 @@ struct IfExpr {
   FunctionGraph else_branch;
 };
 
+struct SelectExpr {
+  std::vector<TypeProperties> types;
+};
+
 struct WhileExpr {
   FunctionGraph body;
 };
 
-using Expr = std::variant<std::shared_ptr<const AnyFunction>, IfExpr, WhileExpr>;
+using Expr = std::variant<std::shared_ptr<const AnyFunction>, IfExpr, SelectExpr, WhileExpr>;
 
 struct FunctionGraph::State {
   std::vector<TypeProperties> input_types;
@@ -44,8 +48,9 @@ struct FunctionGraph::State {
 
 inline int num_outputs(const Expr& e) {
   return int(std::visit(Overloaded{[](const std::shared_ptr<const AnyFunction>& f) { return f->output_types().size(); },
-                                   [](const WhileExpr& e) { return e.body.state->output_types.size() - 1; },
-                                   [](const IfExpr& e) { return e.if_branch.state->output_types.size(); }},
+                                   [](const IfExpr& e) { return e.if_branch.state->output_types.size(); },
+                                   [](const SelectExpr& e) { return e.types.size(); },
+                                   [](const WhileExpr& e) { return e.body.state->output_types.size() - 1; }},
                         e));
 }
 

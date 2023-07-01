@@ -203,6 +203,28 @@ BOOST_AUTO_TEST_CASE(test_graph_if) {
   BOOST_CHECK_EQUAL(6, any_cast<int>(std::move(outputs.front()).wait()));
 }
 
+BOOST_AUTO_TEST_CASE(test_graph_select) {
+  auto [cg, inputs] = make_graph(make_type_properties(TypeList<bool, int, int>{}));
+  const auto g = *std::move(cg).finalize(*cg.add_select(inputs[0], {inputs[1]}, {inputs[2]}));
+
+  auto ex = make_seq_executor();
+
+  std::vector<Future> owned_inputs;
+  owned_inputs.push_back(Future(ex, Any(true)));
+  owned_inputs.push_back(Future(ex, Any(1)));
+  owned_inputs.push_back(Future(ex, Any(2)));
+
+  auto outputs = execute_graph(g, ex, std::move(owned_inputs), {});
+  BOOST_CHECK_EQUAL(1, any_cast<int>(std::move(outputs.front()).wait()));
+
+  owned_inputs.push_back(Future(ex, Any(false)));
+  owned_inputs.push_back(Future(ex, Any(1)));
+  owned_inputs.push_back(Future(ex, Any(2)));
+
+  outputs = execute_graph(g, ex, std::move(owned_inputs), {});
+  BOOST_CHECK_EQUAL(2, any_cast<int>(std::move(outputs.front()).wait()));
+}
+
 BOOST_AUTO_TEST_CASE(test_graph_zero_arg_function) {
   const auto constant = []() { return 3; };
 

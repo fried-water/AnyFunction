@@ -87,6 +87,7 @@ public:
   tl::expected<std::vector<Oterm>, GraphError> add(const FunctionGraph&, Span<Oterm>);
 
   tl::expected<std::vector<Oterm>, GraphError> add_if(FunctionGraph, FunctionGraph, Span<Oterm>);
+  tl::expected<std::vector<Oterm>, GraphError> add_select(Oterm cond, Span<Oterm> if_, Span<Oterm> else_);
   tl::expected<std::vector<Oterm>, GraphError> add_while(FunctionGraph, Span<Oterm>);
 
   tl::expected<FunctionGraph, GraphError> finalize(Span<Oterm>) &&;
