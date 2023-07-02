@@ -153,6 +153,45 @@ BOOST_AUTO_TEST_CASE(test_graph_ref) {
   BOOST_CHECK_EQUAL(7, execute_graph(g, make_seq_executor(), 7));
 }
 
+BOOST_AUTO_TEST_CASE(test_graph_functional_no_args) {
+  auto [cg, inputs] = make_graph(make_type_properties(TypeList<FunctionGraph>{}));
+
+  const auto g = *std::move(cg).finalize(*cg.add_functional({type_id<int>()}, inputs[0], {}));
+
+  auto ex = make_seq_executor();
+
+  std::vector<Future> owned_inputs;
+  owned_inputs.push_back(Future(ex, Any(make_graph(AnyFunction([]() { return 7; })))));
+
+  auto outputs = execute_graph(g, ex, std::move(owned_inputs), {});
+  BOOST_CHECK_EQUAL(7, any_cast<int>(std::move(outputs.front()).wait()));
+
+  owned_inputs.push_back(Future(ex, Any(make_graph(AnyFunction([]() { return 4; })))));
+
+  outputs = execute_graph(g, ex, std::move(owned_inputs), {});
+  BOOST_CHECK_EQUAL(4, any_cast<int>(std::move(outputs.front()).wait()));
+}
+
+BOOST_AUTO_TEST_CASE(test_graph_functional) {
+  auto [cg, inputs] = make_graph(make_type_properties(TypeList<FunctionGraph, int>{}));
+  const auto g = *std::move(cg).finalize(*cg.add_functional({type_id<int>()}, inputs[0], {inputs[1]}));
+
+  auto ex = make_seq_executor();
+
+  std::vector<Future> owned_inputs;
+  owned_inputs.push_back(Future(ex, Any(make_graph(AnyFunction([](int x) { return x + 1; })))));
+  owned_inputs.push_back(Future(ex, Any(5)));
+
+  auto outputs = execute_graph(g, ex, std::move(owned_inputs), {});
+  BOOST_CHECK_EQUAL(6, any_cast<int>(std::move(outputs.front()).wait()));
+
+  owned_inputs.push_back(Future(ex, Any(make_graph(AnyFunction([](int x) { return x + 3; })))));
+  owned_inputs.push_back(Future(ex, Any(5)));
+
+  outputs = execute_graph(g, ex, std::move(owned_inputs), {});
+  BOOST_CHECK_EQUAL(8, any_cast<int>(std::move(outputs.front()).wait()));
+}
+
 BOOST_AUTO_TEST_CASE(test_graph_while) {
   const auto body = [](int x, const int& limit) { return std::tuple(x + 1 < limit, x + 1); };
 

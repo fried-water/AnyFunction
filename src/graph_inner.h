@@ -20,6 +20,10 @@ struct ValueForward {
   KNOT_ORDERED(ValueForward);
 };
 
+struct SExpr {
+  std::vector<TypeID> types;
+};
+
 struct IfExpr {
   FunctionGraph if_branch;
   FunctionGraph else_branch;
@@ -33,7 +37,7 @@ struct WhileExpr {
   FunctionGraph body;
 };
 
-using Expr = std::variant<std::shared_ptr<const AnyFunction>, IfExpr, SelectExpr, WhileExpr>;
+using Expr = std::variant<std::shared_ptr<const AnyFunction>, SExpr, IfExpr, SelectExpr, WhileExpr>;
 
 struct FunctionGraph::State {
   std::vector<TypeProperties> input_types;
@@ -48,6 +52,7 @@ struct FunctionGraph::State {
 
 inline int num_outputs(const Expr& e) {
   return int(std::visit(Overloaded{[](const std::shared_ptr<const AnyFunction>& f) { return f->output_types().size(); },
+                                   [](const SExpr& e) { return e.types.size(); },
                                    [](const IfExpr& e) { return e.if_branch.state->output_types.size(); },
                                    [](const SelectExpr& e) { return e.types.size(); },
                                    [](const WhileExpr& e) { return e.body.state->output_types.size() - 1; }},

@@ -33,6 +33,14 @@ struct InvocationBlock {
       , promises(std::move(promises)) {}
 };
 
+struct FunctionalBlock {
+  ExecutorRef e;
+  std::atomic<int> ref_count;
+  std::vector<Future> owned_inputs;
+  std::vector<BorrowedFuture> borrowed_inputs;
+  std::vector<Promise> promises;
+};
+
 struct IfBlock {
   ExecutorRef e;
   std::atomic<int> ref_count;
@@ -108,6 +116,22 @@ void invoke_async(ExecutorRef e,
       });
     }
   }
+}
+
+void invoke_async(Future fn, FunctionalBlock* b) {
+  std::move(fn).then([b](Any cond) {
+    std::vector<Future> results =
+      execute_graph(any_cast<FunctionGraph>(cond), b->e, std::move(b->owned_inputs), b->borrowed_inputs);
+
+    for(int i = 0; i < int(results.size()); i++) {
+      std::move(results[i]).then([i, b](Any a) mutable {
+        std::move(b->promises[i]).send(std::move(a));
+        if(decrement(b->ref_count) == 1) {
+          delete b;
+        }
+      });
+    }
+  });
 }
 
 void invoke_async(Future cond, IfBlock* b) {
@@ -288,6 +312,15 @@ std::vector<Future> execute_graph(const FunctionGraph& g_outer,
       Overloaded{
         [&](const auto& f) {
           invoke_async(executor, f, std::move(promises), std::move(s.inputs[i]), std::move(s.borrowed_inputs[i]));
+        },
+        [&](const SExpr& e) {
+          invoke_async(std::move(s.inputs[i].front()),
+                       new FunctionalBlock{executor,
+                                           int(promises.size()),
+                                           std::vector<Future>(std::make_move_iterator(s.inputs[i].begin() + 1),
+                                                               std::make_move_iterator(s.inputs[i].end())),
+                                           std::move(s.borrowed_inputs[i]),
+                                           std::move(promises)});
         },
         [&](const IfExpr& e) {
           invoke_async(std::move(s.inputs[i].front()),

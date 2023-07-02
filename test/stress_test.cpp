@@ -43,7 +43,7 @@ auto create_graph(int depth) {
 BOOST_AUTO_TEST_CASE(stress_test, *boost::unit_test::disabled()) {
   const int depth = 12;
   const int num_executions = 100;
-  auto executor = make_task_executor();
+  auto ex = make_task_executor();
 
   fmt::print("Thread count: {}\n", std::thread::hardware_concurrency());
   fmt::print("Creating graph of size {}\n", ((1 << depth) * 2 - 1));
@@ -57,7 +57,7 @@ BOOST_AUTO_TEST_CASE(stress_test, *boost::unit_test::disabled()) {
   t0 = std::chrono::steady_clock::now();
   int result = -1;
   for(int i = 0; i < num_executions; i++) {
-    result = execute_graph(g, executor, 1);
+    result = execute_graph(g, ex, 1);
   }
 
   fmt::print("Result is {}, {} executions took {}ms\n",
@@ -66,9 +66,26 @@ BOOST_AUTO_TEST_CASE(stress_test, *boost::unit_test::disabled()) {
              std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - t0).count());
 }
 
+BOOST_AUTO_TEST_CASE(stress_test_functional) {
+  const int num_executions = 100;
+  auto ex = make_task_executor();
+
+  auto [cg, inputs] = make_graph(make_type_properties(TypeList<FunctionGraph, int>{}));
+  const auto g = *std::move(cg).finalize(*cg.add_functional({type_id<int>()}, inputs[0], {inputs[1]}));
+
+  for(int i = 0; i < num_executions; i++) {
+    std::vector<Future> owned_inputs;
+    owned_inputs.push_back(Future(ex, Any(make_graph(AnyFunction([i](int x) { return x + i; })))));
+    owned_inputs.push_back(Future(ex, Any(5)));
+
+    auto outputs = execute_graph(g, ex, std::move(owned_inputs), {});
+    BOOST_CHECK_EQUAL(i + 5, any_cast<int>(std::move(outputs.front()).wait()));
+  }
+}
+
 BOOST_AUTO_TEST_CASE(stress_test_if) {
   const int num_executions = 100;
-  auto executor = make_task_executor();
+  auto ex = make_task_executor();
 
   const auto identity = [](int x) { return x; };
   const auto add1 = [](int x) { return x + 1; };
@@ -79,35 +96,35 @@ BOOST_AUTO_TEST_CASE(stress_test_if) {
 
   for(int i = 0; i < num_executions; i++) {
     std::vector<Future> owned_inputs;
-    owned_inputs.push_back(Future(executor, Any(i % 2 == 0)));
-    owned_inputs.push_back(Future(executor, Any(0)));
+    owned_inputs.push_back(Future(ex, Any(i % 2 == 0)));
+    owned_inputs.push_back(Future(ex, Any(0)));
 
-    auto outputs = execute_graph(g, executor, std::move(owned_inputs), {});
+    auto outputs = execute_graph(g, ex, std::move(owned_inputs), {});
     BOOST_CHECK_EQUAL(i % 2, any_cast<int>(std::move(outputs.front()).wait()));
   }
 }
 
 BOOST_AUTO_TEST_CASE(stress_test_select) {
   const int num_executions = 100;
-  auto executor = make_task_executor();
+  auto ex = make_task_executor();
 
   auto [cg, inputs] = make_graph(make_type_properties(TypeList<bool, int, int>{}));
   const auto g = *std::move(cg).finalize(*cg.add_select(inputs[0], {inputs[1]}, {inputs[2]}));
 
   for(int i = 0; i < num_executions; i++) {
     std::vector<Future> owned_inputs;
-    owned_inputs.push_back(Future(executor, Any(i % 2 == 0)));
-    owned_inputs.push_back(Future(executor, Any(0)));
-    owned_inputs.push_back(Future(executor, Any(1)));
+    owned_inputs.push_back(Future(ex, Any(i % 2 == 0)));
+    owned_inputs.push_back(Future(ex, Any(0)));
+    owned_inputs.push_back(Future(ex, Any(1)));
 
-    auto outputs = execute_graph(g, executor, std::move(owned_inputs), {});
+    auto outputs = execute_graph(g, ex, std::move(owned_inputs), {});
     BOOST_CHECK_EQUAL(i % 2, any_cast<int>(std::move(outputs.front()).wait()));
   }
 }
 
 BOOST_AUTO_TEST_CASE(stress_test_while) {
   const int num_executions = 100;
-  auto executor = make_task_executor();
+  auto ex = make_task_executor();
 
   const auto body = [](int x, const int& limit) { return std::tuple(x + 1 < limit, x + 1); };
 
@@ -118,13 +135,13 @@ BOOST_AUTO_TEST_CASE(stress_test_while) {
     const int limit = i % 10;
 
     std::vector<Future> owned_inputs;
-    owned_inputs.push_back(Future(executor, Any(0 < limit)));
-    owned_inputs.push_back(Future(executor, Any(0)));
+    owned_inputs.push_back(Future(ex, Any(0 < limit)));
+    owned_inputs.push_back(Future(ex, Any(0)));
 
     std::vector<BorrowedFuture> borrowed_inputs;
-    borrowed_inputs.push_back(borrow(Future(executor, Any(limit))).first);
+    borrowed_inputs.push_back(borrow(Future(ex, Any(limit))).first);
 
-    auto outputs = execute_graph(g, executor, std::move(owned_inputs), borrowed_inputs);
+    auto outputs = execute_graph(g, ex, std::move(owned_inputs), borrowed_inputs);
     BOOST_CHECK_EQUAL(limit, any_cast<int>(std::move(outputs.front()).wait()));
   }
 }

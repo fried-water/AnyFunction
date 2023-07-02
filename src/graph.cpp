@@ -45,9 +45,8 @@ std::vector<Oterm> make_oterms(int node, int size) {
 }
 
 std::pair<int, int> counts(Span<TypeProperties> types) {
-  const auto is_value = [](TypeProperties t) { return t.value; };
-  return {int(std::count_if(types.begin(), types.end(), is_value)),
-          int(std::count_if(types.begin(), types.end(), std::not_fn(is_value)))};
+  const auto values = std::count_if(types.begin(), types.end(), [](auto t) { return t.value; });
+  return {int(values), int(types.size() - values)};
 }
 
 TypeProperties type(Span<TypeProperties> types, int port, bool is_value) {
@@ -66,6 +65,9 @@ TypeProperties type(const FunctionGraph::State& g, Oterm t) {
     assert(t.value);
     return std::visit(Overloaded{[&](const std::shared_ptr<const AnyFunction>& f) {
                                    return TypeProperties{f->output_types()[t.port], true};
+                                 },
+                                 [&](const SExpr& i) {
+                                   return TypeProperties{i.types[t.port], true};
                                  },
                                  [&](const IfExpr& i) {
                                    return TypeProperties{i.if_branch.state->output_types[t.port], true};
@@ -234,6 +236,27 @@ tl::expected<std::vector<Oterm>, GraphError> ConstructingGraph::add(const Functi
 }
 
 tl::expected<std::vector<Oterm>, GraphError>
+ConstructingGraph::add_functional(std::vector<TypeID> outputs, Oterm fn, Span<Oterm> fn_inputs) {
+  const TypeProperties fn_type = type(fn);
+
+  // TODO: find a way to type check fn arguments and derive fn outputs
+  if(fn_type != TypeProperties{type_id<FunctionGraph>(), true}) {
+    return tl::unexpected{NoFunction{}};
+  }
+
+  std::vector<Oterm> inputs;
+  inputs.reserve(fn_inputs.size() + 1);
+  inputs.push_back(fn);
+  inputs.insert(inputs.end(), fn_inputs.begin(), fn_inputs.end());
+
+  std::vector<TypeProperties> input_types;
+  input_types.reserve(inputs.size());
+  std::transform(inputs.begin(), inputs.end(), std::back_inserter(input_types), [&](Oterm o) { return type(o); });
+
+  return add_internal(_state->g, _state->usage, SExpr{std::move(outputs)}, inputs, input_types);
+}
+
+tl::expected<std::vector<Oterm>, GraphError>
 ConstructingGraph::add_if(FunctionGraph if_branch, FunctionGraph else_branch, Span<Oterm> inputs) {
   if(if_branch.state->input_types != else_branch.state->input_types ||
      if_branch.state->output_types != else_branch.state->output_types) {
@@ -348,7 +371,8 @@ std::string msg(const GraphError& e) {
       [](const BadType& e) { return fmt::format("Incorrect type for argument {}", e.index); },
       [](const AlreadyMoved& e) { return fmt::format("Value for argument {} already moved", e.index); },
       [](const CannotCopy& e) { return fmt::format("Input argument {} cannot be copied moved", e.index); },
-      [](const MismatchedBranchTypes&) { return fmt::format("If and else branch graphs have different types"); }},
+      [](const MismatchedBranchTypes&) { return fmt::format("If and else branch graphs have different types"); },
+      [](const NoFunction&) { return fmt::format("S Expr not given a function"); }},
     e);
 }
 
