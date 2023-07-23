@@ -46,11 +46,7 @@ struct MismatchedBranchTypes {
   KNOT_ORDERED(MismatchedBranchTypes);
 };
 
-struct NoFunction {
-  KNOT_ORDERED(NoFunction);
-};
-
-using GraphError = std::variant<BadArity, BadType, AlreadyMoved, CannotCopy, MismatchedBranchTypes, NoFunction>;
+using GraphError = std::variant<BadArity, BadType, AlreadyMoved, CannotCopy, MismatchedBranchTypes>;
 
 std::string msg(const GraphError& e);
 
@@ -90,7 +86,8 @@ public:
   tl::expected<std::vector<Oterm>, GraphError> add(AnyFunction, Span<Oterm>);
   tl::expected<std::vector<Oterm>, GraphError> add(const FunctionGraph&, Span<Oterm>);
 
-  tl::expected<std::vector<Oterm>, GraphError> add_functional(std::vector<TypeID>, Oterm fn, Span<Oterm>);
+  tl::expected<std::vector<Oterm>, GraphError>
+  add_functional(Span<TypeProperties>, std::vector<TypeID>, Oterm fn, Span<Oterm>);
 
   tl::expected<std::vector<Oterm>, GraphError> add_if(FunctionGraph, FunctionGraph, Span<Oterm>);
   tl::expected<std::vector<Oterm>, GraphError> add_select(Oterm cond, Span<Oterm> if_, Span<Oterm> else_);

@@ -70,16 +70,18 @@ BOOST_AUTO_TEST_CASE(stress_test_functional) {
   const int num_executions = 100;
   auto ex = make_task_executor();
 
-  auto [cg, inputs] = make_graph(make_type_properties(TypeList<FunctionGraph, int>{}));
-  const auto g = *std::move(cg).finalize(*cg.add_functional({type_id<int>()}, inputs[0], {inputs[1]}));
+  auto [cg, inputs] = make_graph(make_type_properties(TypeList<FunctionGraph, int, int>{}));
+  const auto g = *std::move(cg).finalize(*cg.add_functional(
+    {{type_id<int>(), true}, {type_id<int>(), false}}, {type_id<int>()}, inputs[0], {inputs[1], inputs[2]}));
 
   for(int i = 0; i < num_executions; i++) {
     std::vector<Future> owned_inputs;
-    owned_inputs.push_back(Future(ex, Any(make_graph(AnyFunction([i](int x) { return x + i; })))));
+    owned_inputs.push_back(Future(ex, Any(make_graph(AnyFunction([i](int x, const int& y) { return x + y + i; })))));
     owned_inputs.push_back(Future(ex, Any(5)));
+    owned_inputs.push_back(Future(ex, Any(7)));
 
     auto outputs = execute_graph(g, ex, std::move(owned_inputs), {});
-    BOOST_CHECK_EQUAL(i + 5, any_cast<int>(std::move(outputs.front()).wait()));
+    BOOST_CHECK_EQUAL(i + 12, any_cast<int>(std::move(outputs.front()).wait()));
   }
 }
 

@@ -235,14 +235,11 @@ tl::expected<std::vector<Oterm>, GraphError> ConstructingGraph::add(const Functi
   return outputs;
 }
 
-tl::expected<std::vector<Oterm>, GraphError>
-ConstructingGraph::add_functional(std::vector<TypeID> outputs, Oterm fn, Span<Oterm> fn_inputs) {
-  const TypeProperties fn_type = type(fn);
-
-  // TODO: find a way to type check fn arguments and derive fn outputs
-  if(fn_type != TypeProperties{type_id<FunctionGraph>(), true}) {
-    return tl::unexpected{NoFunction{}};
-  }
+tl::expected<std::vector<Oterm>, GraphError> ConstructingGraph::add_functional(Span<TypeProperties> fn_input_types,
+                                                                               std::vector<TypeID> outputs,
+                                                                               Oterm fn,
+                                                                               Span<Oterm> fn_inputs) {
+  // TODO: find a way to type check fn arguments and derive fn types
 
   std::vector<Oterm> inputs;
   inputs.reserve(fn_inputs.size() + 1);
@@ -250,8 +247,9 @@ ConstructingGraph::add_functional(std::vector<TypeID> outputs, Oterm fn, Span<Ot
   inputs.insert(inputs.end(), fn_inputs.begin(), fn_inputs.end());
 
   std::vector<TypeProperties> input_types;
-  input_types.reserve(inputs.size());
-  std::transform(inputs.begin(), inputs.end(), std::back_inserter(input_types), [&](Oterm o) { return type(o); });
+  input_types.reserve(fn_input_types.size() + 1);
+  input_types.push_back({type_id<FunctionGraph>(), true});
+  std::copy(fn_input_types.begin(), fn_input_types.end(), std::back_inserter(input_types));
 
   return add_internal(_state->g, _state->usage, SExpr{std::move(outputs)}, inputs, input_types);
 }
@@ -371,8 +369,7 @@ std::string msg(const GraphError& e) {
       [](const BadType& e) { return fmt::format("Incorrect type for argument {}", e.index); },
       [](const AlreadyMoved& e) { return fmt::format("Value for argument {} already moved", e.index); },
       [](const CannotCopy& e) { return fmt::format("Input argument {} cannot be copied moved", e.index); },
-      [](const MismatchedBranchTypes&) { return fmt::format("If and else branch graphs have different types"); },
-      [](const NoFunction&) { return fmt::format("S Expr not given a function"); }},
+      [](const MismatchedBranchTypes&) { return fmt::format("If and else branch graphs have different types"); }},
     e);
 }
 
